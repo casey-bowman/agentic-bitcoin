@@ -1,0 +1,153 @@
+BTC-DOMAIN CRATE - COMPLETE FILE LIST
+=====================================
+
+CONFIGURATION:
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/Cargo.toml
+
+DOCUMENTATION:
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/README.md
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/STRUCTURE.md
+
+SOURCE CODE:
+
+Main Entry Point:
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/lib.rs
+
+Primitives Module (Core Bitcoin Types):
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/primitives/mod.rs
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/primitives/amount.rs
+  * Amount type (i64 satoshis)
+  * COIN constant (100_000_000)
+  * MAX_MONEY (21M * COIN)
+  * MoneyRange validation
+  * Arithmetic operations
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/primitives/hash.rs
+  * Hash256 ([u8; 32] wrapper)
+  * Txid (transaction ID)
+  * Wtxid (witness transaction ID)
+  * BlockHash (block hash)
+  * Display and hex encoding
+  * hash256() - double-SHA256 computation
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/primitives/transaction.rs
+  * OutPoint (previous output reference)
+  * TxIn (transaction input)
+  * TxOut (transaction output)
+  * Transaction (complete transaction)
+  * Witness (witness data stack)
+  * Sequence constants and helpers
+  * Methods: txid(), wtxid(), is_coinbase(), total_output_value(), has_witness()
+  * Weight and vsize computation
+  * Serialization (with and without witness)
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/primitives/block.rs
+  * BlockHeader (80-byte header)
+  * Block (header + transactions)
+  * BlockLocator (peer discovery)
+  * Merkle root computation and verification
+  * Block size computation
+
+Consensus Module (Rules and Parameters):
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/consensus/mod.rs
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/consensus/params.rs
+  * ConsensusParams struct
+  * Network enum (Mainnet, Testnet, Regtest, Signet)
+  * Per-network parameters:
+    - Genesis hash
+    - Subsidy halving interval
+    - BIP34/65/66 heights
+    - CSV height
+    - Segwit height
+    - PoW parameters (limit, target timespan/spacing, min difficulty, no retargeting)
+    - Minimum chain work
+    - Default assume valid
+    - Signet challenge
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/consensus/validation.rs
+  * ValidationResult<T> type
+  * ValidationState enum
+  * ValidationError enum with detailed error codes
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/consensus/rules.rs
+  * check_transaction() - pure validation
+  * check_block_header() - PoW validation
+  * check_block() - complete block validation
+  * Constants:
+    - MAX_BLOCK_SERIALIZED_SIZE (4 MB)
+    - MAX_BLOCK_WEIGHT (4 million witness units)
+    - WITNESS_SCALE_FACTOR (4)
+    - MAX_BLOCK_SIGOPS_COST
+    - COINBASE_MATURITY
+    - MAX_TX_SIZE
+    - Coinbase script size limits
+
+Script Module (Opcodes and Script Types):
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/script/mod.rs
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/script/opcodes.rs
+  * Opcodes enum
+  * All ~100+ Bitcoin opcodes (OP_0 through OP_INVALIDOPCODE)
+  * Conversion methods (from_u8, to_u8)
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/script/script.rs
+  * Script type (Vec<u8> wrapper)
+  * Pattern matching:
+    - is_p2pkh()
+    - is_p2sh()
+    - is_p2wpkh()
+    - is_p2wsh()
+    - is_p2tr()
+    - is_op_return()
+    - is_witness_program()
+  * ScriptBuilder (builder pattern)
+  * ScriptInstruction enum and iterator
+  * Integer encoding for stack operations
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/script/witness.rs
+  * Witness type (Vec<Vec<u8>>)
+  * Stack operations: push(), get(), iter()
+  * is_empty(), len()
+
+Crypto Module (Hashing Functions):
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/crypto/mod.rs
+
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/crypto/hashing.rs
+  * hash256() - double-SHA256
+  * sha256() - single SHA256
+  * hash160() - SHA256 then RIPEMD160
+  * hash_sig() - signature hashing alias
+
+Chain Parameters Module (Network Configuration):
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/src/chain_params/mod.rs
+  * ChainParams struct
+  * Network enum re-export
+  * Magic bytes per network
+  * P2P and RPC ports
+  * DNS seeds for peer discovery
+  * Genesis block construction for each network
+
+TESTS:
+- /sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/tests/integration.rs
+  * Integration tests covering:
+    - Amount basics
+    - Transaction creation
+    - Script builder
+    - Block header
+    - Consensus parameters
+    - Chain parameters
+    - Witness basics
+    - Coinbase transactions
+    - Txid computation
+    - Script patterns
+    - Block creation
+
+SUMMARY
+=======
+Total Source Files: 17 main + 1 test
+Total Lines of Code: ~4000+ lines
+Dependencies: sha2, ripemd, hex
+Architecture: Pure domain logic, zero infrastructure dependencies
+Design: Idiomatic Rust with extensive derives, proper error handling
+Test Coverage: Integration tests + module-level tests

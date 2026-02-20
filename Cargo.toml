@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/btc-domain",
+    "crates/btc-ports",
+    "crates/btc-adapters",
+    "crates/btc-application",
+    "crates/btc-infrastructure",
+]
+resolver = "2"
+
+[package]
+name = "bitcoin-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+btc-infrastructure = { path = "crates/btc-infrastructure" }
+tokio = { version = "1.35", features = ["full"] }
+
+[[bin]]
+name = "bitcoin-rust"
+path = "src/main.rs"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

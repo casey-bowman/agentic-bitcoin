@@ -1,0 +1,10 @@
+[package]
+name = "btc-ports"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+btc-domain = { path = "../btc-domain" }
+async-trait = "0.1"
+thiserror = "1.0"
+serde_json = "1.0"

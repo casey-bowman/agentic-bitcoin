@@ -1,0 +1,16 @@
+[package]
+name = "btc-application"
+version = "0.1.0"
+edition = "2021"
+description = "Bitcoin application layer with use case orchestration"
+license = "MIT"
+
+[dependencies]
+btc-domain = { path = "../btc-domain" }
+btc-ports = { path = "../btc-ports" }
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+tracing = "0.1"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

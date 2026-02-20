@@ -1,0 +1,18 @@
+[package]
+name = "btc-infrastructure"
+version = "0.1.0"
+edition = "2021"
+description = "Bitcoin infrastructure layer with composition root and CLI"
+license = "MIT"
+
+[dependencies]
+btc-domain = { path = "../btc-domain" }
+btc-ports = { path = "../btc-ports" }
+btc-adapters = { path = "../btc-adapters" }
+btc-application = { path = "../btc-application" }
+tokio = { version = "1.35", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.4", features = ["derive"] }
+async-trait = "0.1"
+serde_json = "1.0"
