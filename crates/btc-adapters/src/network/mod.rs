@@ -620,6 +620,7 @@ fn encode_network_message(msg: &NetworkMessage) -> (String, Vec<u8>) {
         NetworkMessage::Tx { .. } => ("tx".to_string(), Vec::new()),
         NetworkMessage::Block { .. } => ("block".to_string(), Vec::new()),
         NetworkMessage::Addr { .. } => ("addr".to_string(), Vec::new()),
+        NetworkMessage::GetAddr => ("getaddr".to_string(), Vec::new()),
     }
 }
 

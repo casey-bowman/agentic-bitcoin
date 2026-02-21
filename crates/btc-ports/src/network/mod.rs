@@ -70,6 +70,8 @@ pub enum NetworkMessage {
     Addr {
         addresses: Vec<(u32, SocketAddr)>, // (timestamp, address)
     },
+    /// GetAddr message - requests addresses of peers
+    GetAddr,
 }
 
 /// Inventory item identifying a transaction or block.

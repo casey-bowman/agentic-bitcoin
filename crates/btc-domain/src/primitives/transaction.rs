@@ -178,7 +178,7 @@ impl Transaction {
 
     /// Compute the transaction ID (txid)
     pub fn txid(&self) -> Txid {
-        let serialized = self.serialize_noinput();
+        let serialized = self.serialize_legacy();
         Txid::from_hash(hash256(&serialized))
     }
 
@@ -208,7 +208,7 @@ impl Transaction {
     /// Compute transaction weight in witness units (4x non-witness data + 1x witness data)
     /// For non-witness transactions: weight = size * 4
     pub fn compute_weight(&self) -> u32 {
-        let base_size = self.serialize_noinput().len() as u32;
+        let base_size = self.serialize_legacy().len() as u32;
         let total_size = self.serialize().len() as u32;
         let witness_size = total_size - base_size;
         
@@ -225,8 +225,8 @@ impl Transaction {
         self.inputs.iter().all(|input| input.is_final())
     }
 
-    /// Serialize transaction without witness data
-    fn serialize_noinput(&self) -> Vec<u8> {
+    /// Serialize transaction without witness data (legacy format)
+    pub fn serialize_legacy(&self) -> Vec<u8> {
         let mut data = Vec::new();
         
         // Version
@@ -269,9 +269,9 @@ impl Transaction {
     }
 
     /// Serialize full transaction (including witness if present)
-    fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> Vec<u8> {
         if !self.has_witness() {
-            return self.serialize_noinput();
+            return self.serialize_legacy();
         }
         
         let mut data = Vec::new();
@@ -328,6 +328,201 @@ impl Transaction {
         data.extend_from_slice(&self.lock_time.to_le_bytes());
         
         data
+    }
+}
+
+/// Error type for transaction deserialization
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeserializeError {
+    /// Not enough data remaining
+    UnexpectedEnd,
+    /// Invalid compact size encoding
+    InvalidCompactSize,
+    /// Transaction too large
+    TooLarge,
+    /// Extra data after transaction
+    TrailingData,
+}
+
+impl fmt::Display for DeserializeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeserializeError::UnexpectedEnd => write!(f, "unexpected end of data"),
+            DeserializeError::InvalidCompactSize => write!(f, "invalid compact size encoding"),
+            DeserializeError::TooLarge => write!(f, "transaction too large"),
+            DeserializeError::TrailingData => write!(f, "trailing data after transaction"),
+        }
+    }
+}
+
+/// Reader cursor for parsing binary data
+struct Cursor<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Cursor { data, pos: 0 }
+    }
+
+    fn read_bytes(&mut self, n: usize) -> Result<&'a [u8], DeserializeError> {
+        if self.pos + n > self.data.len() {
+            return Err(DeserializeError::UnexpectedEnd);
+        }
+        let slice = &self.data[self.pos..self.pos + n];
+        self.pos += n;
+        Ok(slice)
+    }
+
+    fn read_u8(&mut self) -> Result<u8, DeserializeError> {
+        Ok(self.read_bytes(1)?[0])
+    }
+
+    fn read_u16_le(&mut self) -> Result<u16, DeserializeError> {
+        let bytes = self.read_bytes(2)?;
+        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
+    fn read_u32_le(&mut self) -> Result<u32, DeserializeError> {
+        let bytes = self.read_bytes(4)?;
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn read_i32_le(&mut self) -> Result<i32, DeserializeError> {
+        let bytes = self.read_bytes(4)?;
+        Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn read_i64_le(&mut self) -> Result<i64, DeserializeError> {
+        let bytes = self.read_bytes(8)?;
+        Ok(i64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+        ]))
+    }
+
+    fn read_compact_size(&mut self) -> Result<u64, DeserializeError> {
+        let first = self.read_u8()?;
+        match first {
+            0x00..=0xfc => Ok(first as u64),
+            0xfd => Ok(self.read_u16_le()? as u64),
+            0xfe => Ok(self.read_u32_le()? as u64),
+            0xff => {
+                let val = self.read_bytes(8)?;
+                Ok(u64::from_le_bytes([
+                    val[0], val[1], val[2], val[3],
+                    val[4], val[5], val[6], val[7],
+                ]))
+            }
+        }
+    }
+
+    fn read_hash256(&mut self) -> Result<Hash256, DeserializeError> {
+        let bytes = self.read_bytes(32)?;
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(bytes);
+        Ok(Hash256::from_bytes(arr))
+    }
+}
+
+impl Transaction {
+    /// Deserialize a transaction from raw bytes (auto-detects witness format)
+    ///
+    /// Accepts both legacy and segwit (BIP144) serialization formats.
+    /// Returns the parsed transaction and the number of bytes consumed.
+    pub fn deserialize(data: &[u8]) -> Result<(Transaction, usize), DeserializeError> {
+        let mut cursor = Cursor::new(data);
+
+        // Version (4 bytes)
+        let version = cursor.read_i32_le()?;
+
+        // Peek at the next byte to detect witness marker
+        let marker = cursor.read_u8()?;
+        let has_witness = if marker == 0x00 {
+            // Potential witness marker — next byte should be 0x01 (flag)
+            let flag = cursor.read_u8()?;
+            if flag != 0x01 {
+                return Err(DeserializeError::UnexpectedEnd);
+            }
+            true
+        } else {
+            // Not a witness marker — this byte is the start of input count
+            // Rewind by 1 byte
+            cursor.pos -= 1;
+            false
+        };
+
+        // Input count
+        let input_count = cursor.read_compact_size()? as usize;
+
+        // Inputs
+        let mut inputs = Vec::with_capacity(input_count);
+        for _ in 0..input_count {
+            let txid = Txid::from_hash(cursor.read_hash256()?);
+            let vout = cursor.read_u32_le()?;
+            let script_len = cursor.read_compact_size()? as usize;
+            let script_bytes = cursor.read_bytes(script_len)?;
+            let sequence = cursor.read_u32_le()?;
+
+            inputs.push(TxIn {
+                previous_output: OutPoint::new(txid, vout),
+                script_sig: Script::from_bytes(script_bytes.to_vec()),
+                sequence,
+                witness: Witness::new(),
+            });
+        }
+
+        // Output count
+        let output_count = cursor.read_compact_size()? as usize;
+
+        // Outputs
+        let mut outputs = Vec::with_capacity(output_count);
+        for _ in 0..output_count {
+            let value = cursor.read_i64_le()?;
+            let script_len = cursor.read_compact_size()? as usize;
+            let script_bytes = cursor.read_bytes(script_len)?;
+
+            outputs.push(TxOut {
+                value: Amount::from_sat(value),
+                script_pubkey: Script::from_bytes(script_bytes.to_vec()),
+            });
+        }
+
+        // Witness data (if present)
+        if has_witness {
+            for input in &mut inputs {
+                let item_count = cursor.read_compact_size()? as usize;
+                let mut witness = Witness::new();
+                for _ in 0..item_count {
+                    let item_len = cursor.read_compact_size()? as usize;
+                    let item_bytes = cursor.read_bytes(item_len)?;
+                    witness.push(item_bytes.to_vec());
+                }
+                input.witness = witness;
+            }
+        }
+
+        // Locktime (4 bytes)
+        let lock_time = cursor.read_u32_le()?;
+
+        let tx = Transaction {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+        };
+
+        Ok((tx, cursor.pos))
+    }
+
+    /// Deserialize a transaction, requiring all bytes to be consumed
+    pub fn deserialize_exact(data: &[u8]) -> Result<Transaction, DeserializeError> {
+        let (tx, consumed) = Self::deserialize(data)?;
+        if consumed != data.len() {
+            return Err(DeserializeError::TrailingData);
+        }
+        Ok(tx)
     }
 }
 

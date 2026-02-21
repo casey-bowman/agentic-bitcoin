@@ -15,6 +15,7 @@
 //! 2. Compute its cumulative work
 //! 3. If it has more work than the current best chain, it becomes the new tip
 
+use btc_domain::chain_params::Checkpoint;
 use btc_domain::primitives::{BlockHash, BlockHeader};
 use std::collections::HashMap;
 
@@ -56,6 +57,9 @@ pub struct BlockIndex {
     best_tip: BlockHash,
     /// Height-to-hash mapping for the active chain (for O(1) height lookups)
     active_chain: Vec<BlockHash>,
+    /// Hardcoded checkpoints: height → expected hash (hex, reversed).
+    /// Headers at checkpoint heights must match the expected hash.
+    checkpoints: HashMap<u32, String>,
 }
 
 impl BlockIndex {
@@ -65,7 +69,23 @@ impl BlockIndex {
             entries: HashMap::new(),
             best_tip: BlockHash::zero(),
             active_chain: Vec::new(),
+            checkpoints: HashMap::new(),
         }
+    }
+
+    /// Load checkpoints into the block index.
+    ///
+    /// Call this after creation / before syncing so that `add_header`
+    /// can reject headers that violate a checkpoint.
+    pub fn load_checkpoints(&mut self, checkpoints: &[Checkpoint]) {
+        for cp in checkpoints {
+            self.checkpoints.insert(cp.height, cp.hash_hex.to_string());
+        }
+    }
+
+    /// Get the highest loaded checkpoint height, or 0 if none.
+    pub fn last_checkpoint_height(&self) -> u32 {
+        self.checkpoints.keys().copied().max().unwrap_or(0)
     }
 
     /// Initialize the block index with a genesis block header.
@@ -112,6 +132,18 @@ impl BlockIndex {
 
         let height = parent_height + 1;
         let work = parent_work + work_from_bits(header.bits);
+
+        // ── Checkpoint verification ──────────────────────────────
+        // If there is a checkpoint at this height, the hash must match.
+        if let Some(expected_hex) = self.checkpoints.get(&height) {
+            if hash.to_hex_reversed() != *expected_hex {
+                return Err(BlockIndexError::CheckpointMismatch {
+                    height,
+                    expected: expected_hex.clone(),
+                    got: hash.to_hex_reversed(),
+                });
+            }
+        }
 
         let entry = BlockIndexEntry {
             header,
@@ -232,6 +264,41 @@ impl BlockIndex {
         locator
     }
 
+    /// Compute the Median Time Past (MTP) for a block on the active chain.
+    ///
+    /// BIP113: the "time" used for time-lock evaluation is the median of
+    /// the timestamps of the previous 11 blocks (or all blocks if fewer
+    /// than 11 exist). This prevents miners from manipulating the timestamp
+    /// of a single block to bypass time locks.
+    ///
+    /// `height` is the height of the block whose MTP we want. The MTP is
+    /// computed from blocks at heights `max(0, height-10)..=height`.
+    ///
+    /// Returns `None` if the height is not on the active chain.
+    pub fn get_median_time_past(&self, height: u32) -> Option<u32> {
+        const MEDIAN_TIME_SPAN: u32 = 11;
+
+        let start = height.saturating_sub(MEDIAN_TIME_SPAN - 1);
+        let mut timestamps = Vec::with_capacity(MEDIAN_TIME_SPAN as usize);
+
+        for h in start..=height {
+            let hash = self.get_hash_at_height(h)?;
+            let entry = self.entries.get(&hash)?;
+            timestamps.push(entry.header.time);
+        }
+
+        timestamps.sort_unstable();
+        Some(timestamps[timestamps.len() / 2])
+    }
+
+    /// Compute the MTP for the current best chain tip.
+    pub fn tip_median_time_past(&self) -> Option<u32> {
+        if self.active_chain.is_empty() {
+            return None;
+        }
+        self.get_median_time_past(self.best_height())
+    }
+
     /// Rebuild the active_chain vector by walking from best_tip back to genesis.
     fn rebuild_active_chain(&mut self) {
         let mut chain = Vec::new();
@@ -263,6 +330,12 @@ pub enum BlockIndexError {
     OrphanHeader,
     /// The block is already known
     DuplicateBlock,
+    /// A header at a checkpoint height does not match the expected hash
+    CheckpointMismatch {
+        height: u32,
+        expected: String,
+        got: String,
+    },
 }
 
 impl std::fmt::Display for BlockIndexError {
@@ -270,6 +343,13 @@ impl std::fmt::Display for BlockIndexError {
         match self {
             BlockIndexError::OrphanHeader => write!(f, "orphan header (unknown parent)"),
             BlockIndexError::DuplicateBlock => write!(f, "duplicate block"),
+            BlockIndexError::CheckpointMismatch { height, expected, got } => {
+                write!(
+                    f,
+                    "checkpoint mismatch at height {}: expected {}, got {}",
+                    height, expected, got
+                )
+            }
         }
     }
 }
@@ -293,27 +373,38 @@ fn work_from_bits(bits: u32) -> u128 {
         return 0;
     }
 
-    // Compute target = mantissa * 2^(8*(exponent-3))
-    // But we need to be careful with overflow
-    let shift = 8 * (exponent.saturating_sub(3)) as u32;
+    // target = mantissa * 2^(8*(exponent-3))
+    // work = 2^256 / (target + 1)
+    //
+    // For targets that fit in u128 (shift < 128), compute directly.
+    // For larger targets, we reformulate:
+    //   work = 2^256 / (mantissa * 2^shift + 1)
+    //        ≈ 2^(256-shift) / mantissa  (when mantissa << 2^shift)
+    let shift = 8 * (exponent.saturating_sub(3));
 
-    if shift >= 128 {
-        // Target is so large that work is effectively 1
+    if shift >= 256 {
+        // Target exceeds 2^256 — work is negligible but nonzero
         return 1;
     }
 
-    let target = (mantissa as u128)
-        .checked_shl(shift)
-        .unwrap_or(u128::MAX);
-
-    if target == 0 {
-        return u128::MAX;
+    if shift < 128 {
+        // Target fits in u128 — direct computation
+        let target = (mantissa as u128) << shift;
+        if target == 0 {
+            return u128::MAX;
+        }
+        u128::MAX / (target + 1)
+    } else {
+        // Target overflows u128. Compute work = 2^(256-shift) / mantissa.
+        // Since shift >= 128 and shift < 256, (256-shift) is in 1..=128.
+        let work_shift = 256 - shift;
+        if work_shift >= 128 {
+            // 2^128 / mantissa
+            u128::MAX / (mantissa as u128)
+        } else {
+            (1u128 << work_shift) / (mantissa as u128)
+        }
     }
-
-    // work = 2^256 / (target+1)
-    // Since we can't represent 2^256, we use ~0_u128 / target as approximation
-    // This is fine for comparison purposes (which is all we use it for)
-    u128::MAX / (target + 1)
 }
 
 #[cfg(test)]
@@ -476,5 +567,180 @@ mod tests {
         let work_easy = work_from_bits(0x1d00ffff);
         let work_hard = work_from_bits(0x1c00ffff); // smaller target
         assert!(work_hard > work_easy);
+    }
+
+    // ── Checkpoint tests ──────────────────────────────────────
+
+    #[test]
+    fn test_checkpoint_match_passes() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        // Build block at height 1 and record its hash
+        let h1 = make_header(genesis_hash, 1);
+        let h1_hash = h1.block_hash();
+
+        // Load a checkpoint for height 1 that matches
+        index.load_checkpoints(&[Checkpoint {
+            height: 1,
+            hash_hex: Box::leak(h1_hash.to_hex_reversed().into_boxed_str()),
+        }]);
+
+        // Should succeed — hash matches checkpoint
+        let result = index.add_header(h1);
+        assert!(result.is_ok());
+        assert_eq!(index.best_height(), 1);
+    }
+
+    #[test]
+    fn test_checkpoint_mismatch_rejected() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        // Load a checkpoint for height 1 with a bogus hash
+        index.load_checkpoints(&[Checkpoint {
+            height: 1,
+            hash_hex: "0000000000000000000000000000000000000000000000000000000000abcdef",
+        }]);
+
+        // Adding a header at height 1 with a different hash should fail
+        let h1 = make_header(genesis_hash, 1);
+        let result = index.add_header(h1);
+        assert!(matches!(
+            result,
+            Err(BlockIndexError::CheckpointMismatch { .. })
+        ));
+        assert_eq!(index.best_height(), 0); // Still at genesis
+    }
+
+    #[test]
+    fn test_no_checkpoint_at_height_passes() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        // Checkpoint at height 5 — should not affect height 1
+        index.load_checkpoints(&[Checkpoint {
+            height: 5,
+            hash_hex: "0000000000000000000000000000000000000000000000000000000000abcdef",
+        }]);
+
+        let h1 = make_header(genesis_hash, 1);
+        let result = index.add_header(h1);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_last_checkpoint_height() {
+        let mut index = BlockIndex::new();
+        assert_eq!(index.last_checkpoint_height(), 0);
+
+        index.load_checkpoints(&[
+            Checkpoint { height: 100, hash_hex: "aaa" },
+            Checkpoint { height: 500, hash_hex: "bbb" },
+            Checkpoint { height: 250, hash_hex: "ccc" },
+        ]);
+        assert_eq!(index.last_checkpoint_height(), 500);
+    }
+
+    // ── Median Time Past tests ──────────────────────────────────
+
+    fn make_header_with_time(prev: BlockHash, nonce: u32, time: u32) -> BlockHeader {
+        BlockHeader {
+            version: 1,
+            prev_block_hash: prev,
+            merkle_root: Hash256::from_bytes([nonce as u8; 32]),
+            time,
+            bits: 0x1d00ffff,
+            nonce,
+        }
+    }
+
+    #[test]
+    fn test_mtp_genesis_only() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header_with_time(BlockHash::zero(), 0, 1231006505);
+        index.init_genesis(genesis);
+
+        // MTP of genesis (only 1 block) = its own timestamp
+        assert_eq!(index.get_median_time_past(0), Some(1231006505));
+        assert_eq!(index.tip_median_time_past(), Some(1231006505));
+    }
+
+    #[test]
+    fn test_mtp_three_blocks() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header_with_time(BlockHash::zero(), 0, 100);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        let h1 = make_header_with_time(genesis_hash, 1, 200);
+        let (h1_hash, _) = index.add_header(h1).unwrap();
+
+        let h2 = make_header_with_time(h1_hash, 2, 150); // Deliberately out of order
+        let (_h2_hash, _) = index.add_header(h2).unwrap();
+
+        // Heights 0,1,2 have timestamps [100, 200, 150]
+        // Sorted: [100, 150, 200], median = 150
+        assert_eq!(index.get_median_time_past(2), Some(150));
+    }
+
+    #[test]
+    fn test_mtp_eleven_blocks() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header_with_time(BlockHash::zero(), 0, 1000);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        // Build a chain of 11 blocks (heights 0..=10) with timestamps
+        // chosen so the median is well-defined.
+        let timestamps = [1000, 1010, 1020, 1005, 1030, 1015, 1025, 1035, 1008, 1040, 1050];
+        let mut prev = genesis_hash;
+        for i in 1..=10u32 {
+            let h = make_header_with_time(prev, i, timestamps[i as usize]);
+            let (hash, _) = index.add_header(h).unwrap();
+            prev = hash;
+        }
+
+        // MTP at height 10: median of timestamps[0..=10]
+        // Sorted: [1000, 1005, 1008, 1010, 1015, 1020, 1025, 1030, 1035, 1040, 1050]
+        // Median (index 5 of 11) = 1020
+        assert_eq!(index.get_median_time_past(10), Some(1020));
+    }
+
+    #[test]
+    fn test_mtp_more_than_eleven_blocks() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header_with_time(BlockHash::zero(), 0, 500);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        // Build 15 blocks, each 10 seconds apart
+        let mut prev = genesis_hash;
+        for i in 1..=15u32 {
+            let h = make_header_with_time(prev, i, 500 + i * 10);
+            let (hash, _) = index.add_header(h).unwrap();
+            prev = hash;
+        }
+
+        // MTP at height 15 uses blocks 5..=15 (11 blocks)
+        // Timestamps: [550, 560, 570, 580, 590, 600, 610, 620, 630, 640, 650]
+        // Median = 600
+        assert_eq!(index.get_median_time_past(15), Some(600));
+    }
+
+    #[test]
+    fn test_mtp_invalid_height() {
+        let mut index = BlockIndex::new();
+        let genesis = make_header_with_time(BlockHash::zero(), 0, 1000);
+        index.init_genesis(genesis);
+
+        // Height 5 doesn't exist
+        assert_eq!(index.get_median_time_past(5), None);
     }
 }

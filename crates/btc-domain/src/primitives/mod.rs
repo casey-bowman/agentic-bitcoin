@@ -12,5 +12,5 @@ pub use amount::{Amount, is_money_range, COIN, MAX_MONEY};
 pub use hash::BlockHash;
 pub use block::{Block, BlockHeader, BlockLocator};
 pub use hash::{Hash256, Txid, Wtxid};
-pub use transaction::{OutPoint, Sequence, Transaction, TxIn, TxOut};
+pub use transaction::{DeserializeError, OutPoint, Sequence, Transaction, TxIn, TxOut};
 pub use crate::script::Witness;

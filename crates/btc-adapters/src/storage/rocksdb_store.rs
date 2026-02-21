@@ -19,7 +19,7 @@ use btc_domain::primitives::{
     Transaction, TxIn, TxOut, Txid, Witness,
 };
 use btc_domain::Script;
-use btc_ports::{BlockStore, ChainStateStore, UtxoEntry};
+use btc_ports::{BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo};
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -415,6 +415,58 @@ impl ChainStateStore for RocksDbChainStateStore {
             Ok(())
         })
         .await?
+    }
+
+    async fn get_utxo_set_info(&self) -> Result<UtxoSetInfo, Box<dyn std::error::Error + Send + Sync>> {
+        let db = self.db.clone();
+
+        // Also read the chain tip inside the blocking task
+        let tip_result = tokio::task::spawn_blocking({
+            let db = db.clone();
+            move || {
+                let cf_meta = db.cf_handle(CF_META).unwrap();
+                let hash = match db.get_cf(&cf_meta, META_CHAIN_TIP_HASH)? {
+                    Some(bytes) => {
+                        let mut arr = [0u8; 32];
+                        arr.copy_from_slice(&bytes);
+                        BlockHash::from_hash(Hash256::from_bytes(arr))
+                    }
+                    None => BlockHash::zero(),
+                };
+                let height = match db.get_cf(&cf_meta, META_CHAIN_TIP_HEIGHT)? {
+                    Some(bytes) => u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+                    None => 0,
+                };
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((hash, height))
+            }
+        })
+        .await??;
+
+        let stats = tokio::task::spawn_blocking(move || {
+            let cf_utxos = db.cf_handle(CF_UTXOS).unwrap();
+            let iter = db.iterator_cf(&cf_utxos, rocksdb::IteratorMode::Start);
+
+            let mut count: u64 = 0;
+            let mut total_sats: i64 = 0;
+
+            for item in iter {
+                let (_key, value) = item?;
+                if let Ok(entry) = deserialize_utxo_entry(&value) {
+                    count += 1;
+                    total_sats += entry.output.value.as_sat();
+                }
+            }
+
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((count, total_sats))
+        })
+        .await??;
+
+        Ok(UtxoSetInfo {
+            txout_count: stats.0,
+            total_amount: Amount::from_sat(stats.1),
+            best_block: tip_result.0,
+            height: tip_result.1,
+        })
     }
 }
 

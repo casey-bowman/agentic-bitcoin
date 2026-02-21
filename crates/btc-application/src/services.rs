@@ -389,6 +389,18 @@ impl MempoolService {
             .await
             .map_err(|e| e.to_string())
     }
+
+    /// Look up a single transaction in the mempool by txid.
+    pub async fn get_mempool_entry(
+        &self,
+        txid: &btc_domain::primitives::Txid,
+    ) -> Option<btc_ports::MempoolEntry> {
+        self.mempool
+            .get_transaction(txid)
+            .await
+            .ok()
+            .flatten()
+    }
 }
 
 /// Block mining service

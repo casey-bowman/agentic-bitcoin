@@ -32,6 +32,10 @@ pub enum Opcodes {
     OP_RETURN = 0x6a,
 
     // Stack manipulation
+    /// Move top item to altstack
+    OP_TOALTSTACK = 0x6b,
+    /// Move top altstack item to main stack
+    OP_FROMALTSTACK = 0x6c,
     /// Duplicate top item
     OP_DUP = 0x76,
     /// Remove top item
@@ -127,6 +131,10 @@ pub enum Opcodes {
     /// Maximum value
     OP_WITHIN = 0xa5,
     /// Check if within range
+
+    // Byte string
+    /// Push string length
+    OP_SIZE = 0x82,
 
     // Crypto
     /// RIPEMD-160 hash
@@ -266,6 +274,8 @@ impl Opcodes {
             0x68 => Some(Opcodes::OP_ENDIF),
             0x69 => Some(Opcodes::OP_VERIFY),
             0x6a => Some(Opcodes::OP_RETURN),
+            0x6b => Some(Opcodes::OP_TOALTSTACK),
+            0x6c => Some(Opcodes::OP_FROMALTSTACK),
             0x6d => Some(Opcodes::OP_2DROP),
             0x6e => Some(Opcodes::OP_2DUP),
             0x6f => Some(Opcodes::OP_3DUP),
@@ -283,6 +293,7 @@ impl Opcodes {
             0x7b => Some(Opcodes::OP_ROT),
             0x7c => Some(Opcodes::OP_SWAP),
             0x7d => Some(Opcodes::OP_TUCK),
+            0x82 => Some(Opcodes::OP_SIZE),
             0x8b => Some(Opcodes::OP_1ADD),
             0x8c => Some(Opcodes::OP_1SUB),
             0x8d => Some(Opcodes::OP_2MUL),

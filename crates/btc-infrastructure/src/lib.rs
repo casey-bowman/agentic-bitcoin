@@ -9,7 +9,9 @@ use btc_adapters::{
     StubPeerManager, TcpPeerManager, JsonRpcServer, SimpleMiner,
 };
 use btc_application::block_index::BlockIndex;
+use btc_application::fee_estimator::FeeEstimator;
 use btc_application::net_processing::{SyncAction, SyncManager, SyncState};
+use btc_application::rebroadcast::RebroadcastManager;
 use btc_application::services::{BlockchainService, MempoolService, MiningService};
 use btc_application::handlers::{BlockchainRpcHandler, MiningRpcHandler, WalletRpcHandler};
 use btc_domain::ChainParams;
@@ -83,6 +85,10 @@ pub struct BitcoinNode {
     pub mempool_adapter: Arc<InMemoryMempool>,
     pub block_index: Arc<RwLock<BlockIndex>>,
     pub sync_manager: Arc<RwLock<SyncManager>>,
+    /// Fee estimator — updated every time a block is connected
+    pub fee_estimator: Arc<RwLock<FeeEstimator>>,
+    /// Rebroadcast manager — tracks wallet txs for periodic re-announcement
+    pub rebroadcast_manager: Arc<RwLock<RebroadcastManager>>,
     /// Block store (for sync manager use)
     block_store: Arc<dyn BlockStore>,
     /// Chain state store (for sync manager use)
@@ -98,13 +104,15 @@ pub struct BitcoinNode {
 impl BitcoinNode {
     /// Create and wire all components
     pub async fn new(args: CliArgs) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize tracing/logging
-        tracing_subscriber::fmt()
+        // Initialize tracing/logging.
+        // Use try_init() so that concurrent tests (or repeated calls) don't
+        // panic if a global subscriber has already been installed.
+        let _ = tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| EnvFilter::new(&args.log_level))
             )
-            .init();
+            .try_init();
 
         tracing::info!("Initializing Agentic Bitcoin node on {}", args.network);
 
@@ -201,9 +209,10 @@ impl BitcoinNode {
 
         tracing::info!("Initialized blockchain with genesis block: {}", genesis_hash);
 
-        // Initialize block index with genesis header
+        // Initialize block index with genesis header and checkpoints
         let mut block_index = BlockIndex::new();
         block_index.init_genesis(genesis.header.clone());
+        block_index.load_checkpoints(&chain_params.checkpoints);
         let block_index = Arc::new(RwLock::new(block_index));
 
         tracing::info!("Block index initialized with genesis header");
@@ -227,8 +236,14 @@ impl BitcoinNode {
         let template_provider = Arc::new(SimpleMiner::new());
         let mining = Arc::new(MiningService::new(template_provider, blockchain.clone()));
 
+        // Create fee estimator
+        let fee_estimator = Arc::new(RwLock::new(FeeEstimator::new()));
+
+        // Create rebroadcast manager
+        let rebroadcast_manager = Arc::new(RwLock::new(RebroadcastManager::new()));
+
         // Register RPC handlers
-        let bc_handler = Box::new(BlockchainRpcHandler::new(blockchain.clone(), mempool.clone()));
+        let bc_handler = Box::new(BlockchainRpcHandler::new(blockchain.clone(), mempool.clone(), fee_estimator.clone(), chain_state.clone(), block_index.clone()));
         rpc_server.register_handler(bc_handler).await?;
 
         let mining_handler = Box::new(MiningRpcHandler::new(mining.clone()));
@@ -267,6 +282,8 @@ impl BitcoinNode {
             mempool_adapter,
             block_index,
             sync_manager,
+            fee_estimator,
+            rebroadcast_manager,
             block_store,
             chain_state,
             tcp_peer_manager,
@@ -382,6 +399,65 @@ impl BitcoinNode {
             }
         });
 
+        // Transaction rebroadcast loop
+        let rebroadcast_mgr = self.rebroadcast_manager.clone();
+        let rebroadcast_mempool = self.mempool_adapter.clone();
+        let rebroadcast_peers = self.peer_manager.clone();
+        tokio::spawn(async move {
+            // Check every 5 minutes
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5 * 60));
+            loop {
+                interval.tick().await;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                let mempool_ref = &rebroadcast_mempool;
+                let mut mgr = rebroadcast_mgr.write().await;
+
+                // Collect txids to check before the closure
+                let tracked_txids: Vec<btc_domain::primitives::Txid> = mgr
+                    .check_rebroadcast(now, |txid| {
+                        // Synchronous check — we can't await inside the closure.
+                        // The InMemoryMempool uses async, so we approximate: always
+                        // return true and let the actual inv send be best-effort.
+                        let _ = txid;
+                        true
+                    })
+                    .into_iter()
+                    .filter_map(|action| match action {
+                        btc_application::rebroadcast::RebroadcastAction::Reannounce(txid) => {
+                            Some(txid)
+                        }
+                        btc_application::rebroadcast::RebroadcastAction::Abandon(txid) => {
+                            tracing::info!("Abandoning rebroadcast of tx {}", txid);
+                            None
+                        }
+                    })
+                    .collect();
+
+                drop(mgr);
+
+                for txid in tracked_txids {
+                    // Check mempool async and announce
+                    if let Ok(Some(_)) = mempool_ref.get_transaction(&txid).await {
+                        let inv = btc_ports::NetworkMessage::Inv {
+                            items: vec![btc_ports::InventoryItem::Tx(txid)],
+                        };
+                        if let Ok(peers) = rebroadcast_peers.get_connected_peers().await {
+                            for peer in peers {
+                                let _ = rebroadcast_peers
+                                    .send_to_peer(peer.id, inv.clone())
+                                    .await;
+                            }
+                        }
+                        tracing::debug!("Rebroadcast tx {} to peers", txid);
+                    }
+                }
+            }
+        });
+
         // Ping/keepalive loop for TCP peers
         if let Some(ref tcp_mgr) = self.tcp_peer_manager {
             let tcp = tcp_mgr.clone();
@@ -424,8 +500,40 @@ impl BitcoinNode {
         for action in actions {
             match action {
                 SyncAction::ProcessBlock(block) => {
-                    if let Err(e) = self.blockchain.validate_and_accept_block(&block).await {
-                        tracing::warn!("Failed to accept block {}: {}", block.block_hash(), e);
+                    match self.blockchain.validate_and_accept_block(&block).await {
+                        Ok(_) => {
+                            // Block accepted — feed fee estimator with confirmed tx fee rates.
+                            let info = self.chain_state.get_best_chain_tip().await;
+                            let height = info.map(|(_, h)| h).unwrap_or(0);
+
+                            let confirmed_fees: Vec<(btc_domain::primitives::Amount, usize, u32)> =
+                                block.transactions.iter().filter_map(|tx| {
+                                    if tx.is_coinbase() {
+                                        return None;
+                                    }
+                                    // Approximate fee: we don't have input values readily,
+                                    // so use a heuristic — the mempool had the fee when we
+                                    // accepted the tx.  For now, estimate 1 sat/vB minimum
+                                    // as a placeholder; real fee calculation requires UTXO lookup.
+                                    let vsize = tx.compute_vsize() as usize;
+                                    let estimated_fee = btc_domain::primitives::Amount::from_sat(
+                                        vsize as i64, // ~1 sat/vB estimate
+                                    );
+                                    Some((estimated_fee, vsize, 1u32))
+                                }).collect();
+
+                            if !confirmed_fees.is_empty() {
+                                let mut est = self.fee_estimator.write().await;
+                                est.process_block(height, &confirmed_fees);
+                                tracing::debug!(
+                                    "Fee estimator updated: height={}, txs={}",
+                                    height, confirmed_fees.len()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to accept block {}: {}", block.block_hash(), e);
+                        }
                     }
                 }
                 SyncAction::ProcessTransaction(tx) => {
@@ -445,6 +553,16 @@ impl BitcoinNode {
                     if let Err(e) = self.peer_manager.send_to_peer(peer_id, msg).await {
                         tracing::debug!("Failed to send message to peer {}: {}", peer_id, e);
                     }
+                }
+                SyncAction::AcceptedTransaction { tx, from_peer } => {
+                    // Transaction was already accepted into the mempool by the
+                    // SyncManager. Relay it to all other peers.
+                    tracing::info!(
+                        "Relaying accepted tx {} (from peer {})",
+                        tx.txid(),
+                        from_peer,
+                    );
+                    let _ = self.peer_manager.broadcast_transaction(&tx).await;
                 }
                 SyncAction::DisconnectPeer(peer_id) => {
                     let _ = self.peer_manager.disconnect_peer(peer_id).await;

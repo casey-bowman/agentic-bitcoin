@@ -692,7 +692,8 @@ impl MempoolPort for InMemoryMempool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use btc_domain::primitives::{OutPoint, Script, TxIn, TxOut};
+    use btc_domain::primitives::{OutPoint, TxIn, TxOut};
+    use btc_domain::Script;
 
     fn make_test_tx(value: i64) -> Transaction {
         let input = TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new());
@@ -884,5 +885,131 @@ mod tests {
         let result = mempool.add_transaction(&tx26).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Ancestor limit"));
+    }
+
+    #[tokio::test]
+    async fn test_get_all_transactions() {
+        let mempool = InMemoryMempool::new();
+
+        let tx1 = make_test_tx(1000);
+        let tx2 = make_test_tx(2000);
+        mempool.add_transaction(&tx1).await.unwrap();
+        mempool.add_transaction(&tx2).await.unwrap();
+
+        let all = mempool.get_all_transactions().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_transaction() {
+        let mempool = InMemoryMempool::new();
+        let result = mempool.get_transaction(&Txid::zero()).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_nonexistent_transaction() {
+        let mempool = InMemoryMempool::new();
+        // Should not error when removing a txid that doesn't exist
+        mempool
+            .remove_transaction(&Txid::zero(), false)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_mempool_set_height() {
+        let mempool = InMemoryMempool::new();
+        mempool.set_height(500).await;
+
+        let tx = make_test_tx(10_000);
+        mempool.add_transaction(&tx).await.unwrap();
+
+        let entry = mempool.get_transaction(&tx.txid()).await.unwrap().unwrap();
+        assert_eq!(entry.height, 500);
+    }
+
+    #[tokio::test]
+    async fn test_mining_selection_weight_limit() {
+        let mempool = InMemoryMempool::new();
+
+        // Add several transactions
+        for i in 0..10 {
+            let tx = make_test_tx(1000 * (i + 1));
+            mempool.add_transaction(&tx).await.unwrap();
+        }
+
+        // Request with very small weight limit — should get fewer transactions
+        let selected = mempool.get_transactions_by_fee_rate(200).await;
+        assert!(selected.len() < 10);
+
+        // Request with huge limit — should get all
+        let all = mempool.get_transactions_by_fee_rate(4_000_000).await;
+        assert_eq!(all.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_remove_for_block_nonexistent() {
+        let mempool = InMemoryMempool::new();
+
+        // Removing transactions not in mempool should not panic
+        let fake_tx = make_test_tx(999);
+        mempool.remove_for_block(&[fake_tx]).await;
+        assert_eq!(mempool.get_transaction_count().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_child_removal_updates_parent_descendants() {
+        let mempool = InMemoryMempool::new();
+
+        let parent = make_test_tx(50_000);
+        let parent_txid = parent.txid();
+        mempool.add_transaction(&parent).await.unwrap();
+
+        let child = make_child_tx(parent_txid, 40_000);
+        let child_txid = child.txid();
+        mempool.add_transaction(&child).await.unwrap();
+
+        // Verify parent has 2 descendants (self + child)
+        {
+            let packages = mempool.packages.read().await;
+            assert_eq!(packages.get(&parent_txid).unwrap().descendant_count, 2);
+        }
+
+        // Remove the child only (non-recursive)
+        mempool
+            .remove_transaction(&child_txid, false)
+            .await
+            .unwrap();
+
+        // Parent's descendant count should drop back to 1
+        {
+            let packages = mempool.packages.read().await;
+            assert_eq!(packages.get(&parent_txid).unwrap().descendant_count, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_default_impl() {
+        let mempool = InMemoryMempool::default();
+        assert_eq!(mempool.size().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_fee_estimation_with_data() {
+        let mempool = InMemoryMempool::new();
+
+        // Add transactions to populate fee rate buckets
+        for i in 0..100 {
+            let tx = make_test_tx(1000 + i);
+            mempool.add_transaction(&tx).await.unwrap();
+        }
+
+        // Fee estimation should return something > 0
+        let fee_1 = mempool.estimate_fee(1).await.unwrap();
+        let fee_12 = mempool.estimate_fee(12).await.unwrap();
+
+        assert!(fee_1 >= MIN_RELAY_FEE_RATE);
+        assert!(fee_12 >= MIN_RELAY_FEE_RATE);
     }
 }

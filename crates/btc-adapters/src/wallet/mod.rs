@@ -494,4 +494,236 @@ mod tests {
         assert_ne!(addr1, addr2);
         assert_eq!(wallet.key_count().await, 2);
     }
+
+    #[tokio::test]
+    async fn test_balance_confirmed_vs_unconfirmed() {
+        let wallet = InMemoryWallet::default_mainnet();
+
+        // Add a confirmed UTXO
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 0),
+                output: TxOut::new(Amount::from_sat(50_000), btc_domain::Script::new()),
+                confirmations: 3,
+                is_coinbase: false,
+            })
+            .await;
+
+        // Add an unconfirmed UTXO
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 1),
+                output: TxOut::new(Amount::from_sat(25_000), btc_domain::Script::new()),
+                confirmations: 0,
+                is_coinbase: false,
+            })
+            .await;
+
+        let balance = wallet.get_balance().await.unwrap();
+        assert_eq!(balance.confirmed.as_sat(), 50_000);
+        assert_eq!(balance.unconfirmed.as_sat(), 25_000);
+    }
+
+    #[tokio::test]
+    async fn test_balance_immature_coinbase() {
+        let wallet = InMemoryWallet::default_mainnet();
+
+        // Coinbase with < 100 confirmations → immature
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 0),
+                output: TxOut::new(
+                    Amount::from_sat(5_000_000_000),
+                    btc_domain::Script::new(),
+                ),
+                confirmations: 50,
+                is_coinbase: true,
+            })
+            .await;
+
+        // Coinbase with >= 100 confirmations → not immature
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 1),
+                output: TxOut::new(
+                    Amount::from_sat(5_000_000_000),
+                    btc_domain::Script::new(),
+                ),
+                confirmations: 100,
+                is_coinbase: true,
+            })
+            .await;
+
+        let balance = wallet.get_balance().await.unwrap();
+        assert_eq!(balance.immature.as_sat(), 5_000_000_000); // only the 50-conf one
+    }
+
+    #[tokio::test]
+    async fn test_list_unspent_min_confirmations() {
+        let wallet = InMemoryWallet::default_mainnet();
+
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 0),
+                output: TxOut::new(Amount::from_sat(10_000), btc_domain::Script::new()),
+                confirmations: 0,
+                is_coinbase: false,
+            })
+            .await;
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 1),
+                output: TxOut::new(Amount::from_sat(20_000), btc_domain::Script::new()),
+                confirmations: 3,
+                is_coinbase: false,
+            })
+            .await;
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 2),
+                output: TxOut::new(Amount::from_sat(30_000), btc_domain::Script::new()),
+                confirmations: 10,
+                is_coinbase: false,
+            })
+            .await;
+
+        // min_confirmations = 0 → all 3
+        let all = wallet.list_unspent(0, None).await.unwrap();
+        assert_eq!(all.len(), 3);
+
+        // min_confirmations = 1 → 2 (skip unconfirmed)
+        let confirmed = wallet.list_unspent(1, None).await.unwrap();
+        assert_eq!(confirmed.len(), 2);
+
+        // min_confirmations = 6 → 1
+        let deep = wallet.list_unspent(6, None).await.unwrap();
+        assert_eq!(deep.len(), 1);
+        assert_eq!(deep[0].output.value.as_sat(), 30_000);
+    }
+
+    #[tokio::test]
+    async fn test_list_unspent_max_amount() {
+        let wallet = InMemoryWallet::default_mainnet();
+
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 0),
+                output: TxOut::new(Amount::from_sat(1_000), btc_domain::Script::new()),
+                confirmations: 1,
+                is_coinbase: false,
+            })
+            .await;
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: OutPoint::new(btc_domain::Txid::zero(), 1),
+                output: TxOut::new(Amount::from_sat(100_000), btc_domain::Script::new()),
+                confirmations: 1,
+                is_coinbase: false,
+            })
+            .await;
+
+        let filtered = wallet
+            .list_unspent(0, Some(Amount::from_sat(50_000)))
+            .await
+            .unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].output.value.as_sat(), 1_000);
+    }
+
+    #[tokio::test]
+    async fn test_remove_utxos() {
+        let wallet = InMemoryWallet::default_mainnet();
+
+        let op1 = OutPoint::new(
+            btc_domain::Txid::from_hash(btc_domain::primitives::Hash256::from_bytes([0x01; 32])),
+            0,
+        );
+        let op2 = OutPoint::new(
+            btc_domain::Txid::from_hash(btc_domain::primitives::Hash256::from_bytes([0x02; 32])),
+            0,
+        );
+
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: op1,
+                output: TxOut::new(Amount::from_sat(10_000), btc_domain::Script::new()),
+                confirmations: 1,
+                is_coinbase: false,
+            })
+            .await;
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: op2,
+                output: TxOut::new(Amount::from_sat(20_000), btc_domain::Script::new()),
+                confirmations: 1,
+                is_coinbase: false,
+            })
+            .await;
+
+        assert_eq!(wallet.list_unspent(0, None).await.unwrap().len(), 2);
+
+        wallet.remove_utxos(&[op1]).await;
+
+        let remaining = wallet.list_unspent(0, None).await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].outpoint, op2);
+    }
+
+    #[tokio::test]
+    async fn test_send_transaction_removes_spent_utxos() {
+        let wallet = InMemoryWallet::default_mainnet();
+
+        let op = OutPoint::new(
+            btc_domain::Txid::from_hash(btc_domain::primitives::Hash256::from_bytes([0x01; 32])),
+            0,
+        );
+
+        wallet
+            .add_utxo(UnspentOutput {
+                outpoint: op,
+                output: TxOut::new(Amount::from_sat(100_000), btc_domain::Script::new()),
+                confirmations: 6,
+                is_coinbase: false,
+            })
+            .await;
+
+        // Create a tx that spends the UTXO
+        use btc_domain::primitives::TxIn;
+        let tx = Transaction::v1(
+            vec![TxIn::final_input(op, btc_domain::Script::new())],
+            vec![TxOut::new(Amount::from_sat(90_000), btc_domain::Script::new())],
+            0,
+        );
+
+        let txid_hex = wallet.send_transaction(&tx).await.unwrap();
+        assert!(!txid_hex.is_empty());
+
+        // UTXO should be removed
+        let remaining = wallet.list_unspent(0, None).await.unwrap();
+        assert_eq!(remaining.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_import_invalid_wif_fails() {
+        let wallet = InMemoryWallet::default_mainnet();
+        let result = wallet.import_key("not-a-valid-wif", None, false).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_default_wallet() {
+        let wallet = InMemoryWallet::default();
+        let addr = wallet.get_new_address(None).await.unwrap();
+        // Default is mainnet P2WPKH
+        assert!(addr.starts_with("bc1q"));
+    }
+
+    #[tokio::test]
+    async fn test_empty_balance() {
+        let wallet = InMemoryWallet::default_mainnet();
+        let balance = wallet.get_balance().await.unwrap();
+        assert_eq!(balance.confirmed.as_sat(), 0);
+        assert_eq!(balance.unconfirmed.as_sat(), 0);
+        assert_eq!(balance.immature.as_sat(), 0);
+    }
 }

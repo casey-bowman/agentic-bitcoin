@@ -106,4 +106,80 @@ mod tests {
         let err = ValidationError::TxInputsEmpty;
         assert_eq!(err.to_string(), "Transaction has no inputs");
     }
+
+    #[test]
+    fn test_all_tx_error_variants_display() {
+        let errors = vec![
+            (ValidationError::TxEmpty, "empty"),
+            (ValidationError::TxInputsEmpty, "no inputs"),
+            (ValidationError::TxOutputsEmpty, "no outputs"),
+            (ValidationError::TxOutputsNegative, "negative"),
+            (ValidationError::TxOutputsTooLarge, "too large"),
+            (ValidationError::TxInputsDuplicate, "duplicate"),
+            (ValidationError::TxCoinbaseScriptSizeTooSmall, "too small"),
+            (ValidationError::TxCoinbaseScriptSizeTooLarge, "too large"),
+            (ValidationError::TxSizeTooLarge, "exceeds"),
+        ];
+        for (err, expected_substr) in errors {
+            let msg = err.to_string();
+            assert!(
+                msg.to_lowercase().contains(expected_substr),
+                "{:?} display '{}' should contain '{}'",
+                err,
+                msg,
+                expected_substr
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_block_error_variants_display() {
+        let errors = vec![
+            ValidationError::BlockHeaderInvalid,
+            ValidationError::BlockProofOfWorkInvalid,
+            ValidationError::BlockMerkleRootInvalid,
+            ValidationError::BlockSizeTooLarge,
+            ValidationError::BlockWeightTooLarge,
+            ValidationError::BlockNoTransactions,
+            ValidationError::BlockCoinbaseNotFirst,
+            ValidationError::BlockCoinbaseMultiple,
+            ValidationError::BlockSigopsTooCostly,
+        ];
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty(), "{:?} should have non-empty display", err);
+        }
+    }
+
+    #[test]
+    fn test_validation_error_is_std_error() {
+        let err: Box<dyn std::error::Error> = Box::new(ValidationError::Unknown);
+        assert!(err.to_string().contains("Unknown"));
+    }
+
+    #[test]
+    fn test_validation_state_equality() {
+        assert_eq!(ValidationState::Valid, ValidationState::Valid);
+        assert_ne!(ValidationState::Valid, ValidationState::Invalid);
+        assert_ne!(ValidationState::Invalid, ValidationState::Error);
+    }
+
+    #[test]
+    fn test_validation_error_clone_and_copy() {
+        let err = ValidationError::ScriptInvalid;
+        let cloned = err.clone();
+        let copied = err;
+        assert_eq!(err, cloned);
+        assert_eq!(err, copied);
+    }
+
+    #[test]
+    fn test_validation_error_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ValidationError::TxEmpty);
+        set.insert(ValidationError::TxEmpty); // duplicate
+        set.insert(ValidationError::ScriptInvalid);
+        assert_eq!(set.len(), 2);
+    }
 }

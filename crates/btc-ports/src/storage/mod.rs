@@ -3,8 +3,21 @@
 //! This module defines the port traits for persisting blockchain data.
 //! Implementations of these traits are provided by adapter crates (e.g., btc-adapter-leveldb, btc-adapter-sqlite).
 
-use btc_domain::primitives::{Block, BlockHash, TxOut, Txid};
+use btc_domain::primitives::{Block, BlockHash, Amount, TxOut, Txid};
 use std::error::Error;
+
+/// Summary statistics for the UTXO set, returned by `gettxoutsetinfo`.
+#[derive(Clone, Debug)]
+pub struct UtxoSetInfo {
+    /// Total number of unspent transaction outputs.
+    pub txout_count: u64,
+    /// Total value of all UTXOs in satoshis.
+    pub total_amount: Amount,
+    /// Hash of the best block when statistics were computed.
+    pub best_block: BlockHash,
+    /// Height of the best block.
+    pub height: u32,
+}
 
 /// Represents a UTXO (Unspent Transaction Output) stored in the UTXO set.
 ///
@@ -201,4 +214,14 @@ pub trait ChainStateStore: Send + Sync {
     /// Returns `Ok(())` on success.
     async fn write_chain_tip(&self, hash: BlockHash, height: u32)
         -> Result<(), Box<dyn Error + Send + Sync>>;
+
+    /// Computes summary statistics for the entire UTXO set.
+    ///
+    /// This scans all unspent outputs and returns the count and total value.
+    /// Corresponds to Bitcoin Core's `gettxoutsetinfo` RPC.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `UtxoSetInfo` with count, total amount, and best block info.
+    async fn get_utxo_set_info(&self) -> Result<UtxoSetInfo, Box<dyn Error + Send + Sync>>;
 }

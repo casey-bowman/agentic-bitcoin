@@ -48,7 +48,7 @@ pub mod wallet;
 pub mod rpc;
 
 // Re-export commonly used items
-pub use storage::{BlockStore, ChainStateStore, UtxoEntry, BlockIndexEntry};
+pub use storage::{BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo, BlockIndexEntry};
 pub use network::{PeerManager, NetworkMessage, InventoryItem, PeerInfo, PeerEvent, NetworkListener};
 pub use mining::{BlockTemplateProvider, BlockTemplate, BlockSubmitter};
 pub use mempool::{MempoolPort, MempoolEntry, MempoolInfo};

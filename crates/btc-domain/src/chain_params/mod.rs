@@ -9,26 +9,45 @@ use crate::primitives::hash::BlockHash;
 use crate::primitives::Amount;
 use crate::script::Script;
 
+/// A hardcoded checkpoint: a known-good (height, block hash) pair.
+///
+/// These protect against long-range attacks by ensuring the node cannot
+/// be fed an alternative chain that diverges before a checkpoint.
+#[derive(Debug, Clone)]
+pub struct Checkpoint {
+    /// Block height of the checkpoint.
+    pub height: u32,
+    /// Expected block hash at that height (big-endian hex).
+    pub hash_hex: &'static str,
+}
+
 /// Bitcoin chain parameters for a specific network
 #[derive(Debug, Clone)]
 pub struct ChainParams {
     /// Network type
     pub network: Network,
-    
+
     /// Network magic bytes for P2P protocol
     pub magic_bytes: [u8; 4],
-    
+
     /// Default P2P port
     pub p2p_port: u16,
-    
+
     /// Default RPC port
     pub rpc_port: u16,
-    
+
     /// DNS seeds for peer discovery
     pub dns_seeds: Vec<&'static str>,
-    
+
     /// Consensus parameters
     pub consensus: ConsensusParams,
+
+    /// Hardcoded checkpoints for this network.
+    ///
+    /// During header validation, the block index verifies that headers at
+    /// checkpoint heights match the expected hash, preventing long-range
+    /// alternative-chain attacks.
+    pub checkpoints: Vec<Checkpoint>,
 }
 
 impl ChainParams {
@@ -52,6 +71,21 @@ impl ChainParams {
                 "seeds.bitcoin.petertodd.org",
             ],
             consensus: ConsensusParams::mainnet(),
+            checkpoints: vec![
+                Checkpoint { height: 11111,  hash_hex: "0000000069e244f73d78e8fd29ba2fd2ed618bd6fa2ee92559f542fdb26e7c1d" },
+                Checkpoint { height: 33333,  hash_hex: "000000002dd5588a74784eaa7ab0507a18ad16a236e7b1ce69f00d7ddfb5d0a6" },
+                Checkpoint { height: 74000,  hash_hex: "0000000000573993a3c9e41ce34471c079dcf5f52a0e824a81e7f953b8661a20" },
+                Checkpoint { height: 105000, hash_hex: "00000000000291ce28027faea320c8d2b054b2e0fe44a773f3eefb151d6bdc97" },
+                Checkpoint { height: 134444, hash_hex: "00000000000005b12ffd4cd315cd34ffd4a594f430ac814c91184a0d42d2b0fe" },
+                Checkpoint { height: 168000, hash_hex: "000000000000099e61ea72015e79632f216fe6cb33d7899acb35b75c8303b763" },
+                Checkpoint { height: 193000, hash_hex: "000000000000059f452a5f7340de6682a977387c17010ff6e6c3bd83ca8b1317" },
+                Checkpoint { height: 210000, hash_hex: "000000000000048b95347e83192f69cf0366076336c639f9b7228e9ba171342e" },
+                Checkpoint { height: 216116, hash_hex: "00000000000001b4f4b433e81ee46494af945cf96014816a4e2370f11b23df4e" },
+                Checkpoint { height: 225430, hash_hex: "00000000000001c108384350f74090433e7fcf79a606b8e797f065b130575932" },
+                Checkpoint { height: 250000, hash_hex: "000000000000003887df1f29024b06fc2200b55f8af8f35453d7be294df2d214" },
+                Checkpoint { height: 279000, hash_hex: "0000000000000001ae8c72a0b0c301f67e3afca10e819efa9041e458e9bd7e40" },
+                Checkpoint { height: 295000, hash_hex: "00000000000000004d9b4ef50f0f9d686fd69db2e03af35a100370c64632473f" },
+            ],
         }
     }
 
@@ -69,6 +103,9 @@ impl ChainParams {
                 "testnet-seed.bitcoin.schildbach.de",
             ],
             consensus: ConsensusParams::testnet(),
+            checkpoints: vec![
+                Checkpoint { height: 546, hash_hex: "000000002a936ca763904c3c35fce2f3556c559c0214345d31b1bcebf76acb70" },
+            ],
         }
     }
 
@@ -81,6 +118,7 @@ impl ChainParams {
             rpc_port: 18443,
             dns_seeds: vec![],
             consensus: ConsensusParams::regtest(),
+            checkpoints: vec![],
         }
     }
 
@@ -95,6 +133,7 @@ impl ChainParams {
                 "signet-seed.example.com",
             ],
             consensus: ConsensusParams::signet(),
+            checkpoints: vec![],
         }
     }
 
@@ -105,6 +144,35 @@ impl ChainParams {
             Network::Testnet => ChainParams::testnet(),
             Network::Regtest => ChainParams::regtest(),
             Network::Signet => ChainParams::signet(),
+        }
+    }
+
+    /// Get the checkpoint hash for a given height, if one exists.
+    pub fn get_checkpoint(&self, height: u32) -> Option<&str> {
+        self.checkpoints
+            .iter()
+            .find(|cp| cp.height == height)
+            .map(|cp| cp.hash_hex)
+    }
+
+    /// Get the highest checkpoint height, or 0 if there are none.
+    pub fn last_checkpoint_height(&self) -> u32 {
+        self.checkpoints
+            .iter()
+            .map(|cp| cp.height)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Verify that a block hash at a given height matches the checkpoint.
+    ///
+    /// Returns `true` if there is no checkpoint at that height, or if the
+    /// hash matches. Returns `false` only when there IS a checkpoint and
+    /// the hash does NOT match.
+    pub fn verify_checkpoint(&self, height: u32, hash: &BlockHash) -> bool {
+        match self.get_checkpoint(height) {
+            Some(expected_hex) => hash.to_hex_reversed() == expected_hex,
+            None => true, // No checkpoint at this height → OK
         }
     }
 
@@ -256,5 +324,39 @@ mod tests {
     fn test_for_network() {
         let mainnet = ChainParams::for_network(Network::Mainnet);
         assert_eq!(mainnet.network, Network::Mainnet);
+    }
+
+    #[test]
+    fn test_mainnet_has_checkpoints() {
+        let params = ChainParams::mainnet();
+        assert!(!params.checkpoints.is_empty());
+        assert!(params.checkpoints.len() >= 10);
+    }
+
+    #[test]
+    fn test_regtest_has_no_checkpoints() {
+        let params = ChainParams::regtest();
+        assert!(params.checkpoints.is_empty());
+    }
+
+    #[test]
+    fn test_last_checkpoint_height() {
+        let params = ChainParams::mainnet();
+        assert!(params.last_checkpoint_height() > 0);
+        assert_eq!(params.last_checkpoint_height(), 295000);
+    }
+
+    #[test]
+    fn test_get_checkpoint() {
+        let params = ChainParams::mainnet();
+        let cp = params.get_checkpoint(11111);
+        assert!(cp.is_some());
+        assert!(cp.unwrap().starts_with("0000000069e2"));
+    }
+
+    #[test]
+    fn test_get_checkpoint_nonexistent() {
+        let params = ChainParams::mainnet();
+        assert!(params.get_checkpoint(12345).is_none());
     }
 }

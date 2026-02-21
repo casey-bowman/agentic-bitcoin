@@ -357,6 +357,8 @@ pub struct ScriptInterpreter<'a> {
     checker: &'a dyn SignatureChecker,
     /// Number of non-push opcodes executed
     op_count: usize,
+    /// The script currently being executed (needed for legacy sighash in OP_CHECKSIG)
+    script_code: Script,
 }
 
 impl<'a> ScriptInterpreter<'a> {
@@ -369,6 +371,7 @@ impl<'a> ScriptInterpreter<'a> {
             flags,
             checker,
             op_count: 0,
+            script_code: Script::new(),
         }
     }
 
@@ -421,6 +424,9 @@ impl<'a> ScriptInterpreter<'a> {
         if bytes.len() > MAX_SCRIPT_SIZE {
             return Err(ScriptError::ScriptSize);
         }
+
+        // Track the script being executed for legacy sighash in OP_CHECKSIG
+        self.script_code = script.clone();
 
         let mut pc = 0usize;
 
@@ -707,6 +713,23 @@ impl<'a> ScriptInterpreter<'a> {
                     let depth = self.stack.len() as i64;
                     self.push_num(depth)?;
                 }
+                Opcodes::OP_TOALTSTACK => {
+                    let val = self.pop()?;
+                    self.altstack.push(val);
+                }
+                Opcodes::OP_FROMALTSTACK => {
+                    if self.altstack.is_empty() {
+                        return Err(ScriptError::StackUnderflow);
+                    }
+                    let val = self.altstack.pop().unwrap();
+                    self.push(val)?;
+                }
+                Opcodes::OP_SIZE => {
+                    // Push the byte length of the top stack item without popping it
+                    let top = self.top(0)?;
+                    let size = top.len() as i64;
+                    self.push_num(size)?;
+                }
 
                 // ---- Equality ----
 
@@ -869,7 +892,8 @@ impl<'a> ScriptInterpreter<'a> {
                     let ok = if sig.is_empty() {
                         false
                     } else {
-                        self.checker.check_sig(&sig, &pubkey, &Script::new())
+                        let sc = self.script_code.clone();
+                        self.checker.check_sig(&sig, &pubkey, &sc)
                     };
 
                     self.push_bool(ok)?;
@@ -882,7 +906,8 @@ impl<'a> ScriptInterpreter<'a> {
                     let ok = if sig.is_empty() {
                         false
                     } else {
-                        self.checker.check_sig(&sig, &pubkey, &Script::new())
+                        let sc = self.script_code.clone();
+                        self.checker.check_sig(&sig, &pubkey, &sc)
                     };
 
                     if !ok {
@@ -935,7 +960,7 @@ impl<'a> ScriptInterpreter<'a> {
                         }
                         let mut found = false;
                         while key_idx < n_keys {
-                            if self.checker.check_sig(sig, &pubkeys[key_idx], &Script::new()) {
+                            if self.checker.check_sig(sig, &pubkeys[key_idx], &self.script_code) {
                                 key_idx += 1;
                                 found = true;
                                 break;
@@ -991,7 +1016,7 @@ impl<'a> ScriptInterpreter<'a> {
                         }
                         let mut found = false;
                         while key_idx < n_keys {
-                            if self.checker.check_sig(sig, &pubkeys[key_idx], &Script::new()) {
+                            if self.checker.check_sig(sig, &pubkeys[key_idx], &self.script_code) {
                                 key_idx += 1;
                                 found = true;
                                 break;
@@ -1212,7 +1237,10 @@ pub fn verify_script_with_witness(
     }
 
     // Step 7: Clean stack check
-    if flags.has(ScriptFlags::VERIFY_CLEANSTACK) {
+    // When a native witness program was verified, the main interpreter stack
+    // legitimately holds 2 items (version + program), so we skip cleanstack.
+    // Bitcoin Core likewise exempts the outer stack when witness was handled.
+    if flags.has(ScriptFlags::VERIFY_CLEANSTACK) && !had_witness {
         if interp.stack.len() != 1 {
             return Err(ScriptError::CleanStack);
         }

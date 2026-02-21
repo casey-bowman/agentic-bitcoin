@@ -119,4 +119,71 @@ mod tests {
         assert_eq!((a - b).as_sat(), 50);
         assert_eq!((a * 2).as_sat(), 200);
     }
+
+    #[test]
+    fn test_zero_amount() {
+        let zero = Amount::from_sat(0);
+        assert_eq!(zero.as_sat(), 0);
+        assert!((zero.as_btc()).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_max_money_amount() {
+        let max = Amount::from_sat(MAX_MONEY);
+        assert_eq!(max.as_sat(), 2_100_000_000_000_000);
+        assert!((max.as_btc() - 21_000_000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_negative_amount() {
+        let neg = Amount::from_sat(-1);
+        assert_eq!(neg.as_sat(), -1);
+        assert!(!is_money_range(neg.as_sat()));
+    }
+
+    #[test]
+    fn test_subtraction_can_go_negative() {
+        let small = Amount::from_sat(10);
+        let big = Amount::from_sat(100);
+        let result = small - big;
+        assert_eq!(result.as_sat(), -90);
+    }
+
+    #[test]
+    fn test_amount_ordering() {
+        let a = Amount::from_sat(100);
+        let b = Amount::from_sat(200);
+        assert!(a < b);
+        assert!(b > a);
+        assert_eq!(a, Amount::from_sat(100));
+    }
+
+    #[test]
+    fn test_amount_display() {
+        let amt = Amount::from_sat(COIN);
+        let display = format!("{}", amt);
+        assert!(!display.is_empty());
+    }
+
+    #[test]
+    fn test_money_range_boundary_values() {
+        // Exact boundaries
+        assert!(is_money_range(0));
+        assert!(is_money_range(MAX_MONEY));
+
+        // Just outside boundaries
+        assert!(!is_money_range(-1));
+        assert!(!is_money_range(MAX_MONEY + 1));
+
+        // Way outside
+        assert!(!is_money_range(i64::MIN));
+        assert!(!is_money_range(i64::MAX));
+    }
+
+    #[test]
+    fn test_one_satoshi() {
+        let one = Amount::from_sat(1);
+        assert_eq!(one.as_sat(), 1);
+        assert!((one.as_btc() - 0.00000001).abs() < 1e-12);
+    }
 }

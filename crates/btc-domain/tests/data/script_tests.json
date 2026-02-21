@@ -60,6 +60,17 @@
     ["OP_1 OP_2", "OP_SWAP OP_SUB OP_1 OP_EQUAL", "", "OK", "SWAP then 2-1=1"],
     ["OP_1 OP_2", "OP_OVER OP_ADD OP_3 OP_EQUALVERIFY", "", "OK", "OVER copies second then 2+1=3"],
 
+    ["", "Altstack tests"],
+    ["OP_1 OP_2", "OP_TOALTSTACK OP_FROMALTSTACK OP_ADD OP_3 OP_EQUAL", "", "OK", "TOALTSTACK/FROMALTSTACK round-trip: 1+2=3"],
+    ["OP_5", "OP_TOALTSTACK OP_FROMALTSTACK", "", "OK", "TOALTSTACK then FROMALTSTACK preserves value"],
+    ["OP_1 OP_2 OP_3", "OP_TOALTSTACK OP_TOALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_ADD OP_ADD OP_6 OP_EQUAL", "", "OK", "Multiple altstack ops: 1+2+3=6"],
+    ["", "OP_FROMALTSTACK", "", "STACK_UNDERFLOW", "FROMALTSTACK on empty altstack fails"],
+
+    ["", "SIZE tests"],
+    ["OP_1", "OP_SIZE OP_1 OP_EQUALVERIFY", "", "OK", "SIZE of 1-byte item is 1"],
+    ["0x05 0x0102030405", "OP_SIZE OP_5 OP_EQUAL OP_NIP", "", "OK", "SIZE of 5-byte item is 5"],
+    ["OP_0", "OP_SIZE OP_0 OP_EQUAL OP_NIP", "", "OK", "SIZE of empty push is 0"],
+
     ["", "Conditional tests"],
     ["OP_1", "OP_IF OP_1 OP_ELSE OP_0 OP_ENDIF", "", "OK", "IF true branch"],
     ["OP_0", "OP_IF OP_1 OP_ELSE OP_0 OP_ENDIF", "", "EVAL_FALSE", "IF false branch"],
