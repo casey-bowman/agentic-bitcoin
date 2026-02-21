@@ -49,6 +49,53 @@ Hexagonal architecture with 5 crates:
 2. **BIP325 Signet support** — custom signets with challenge scripts
 3. **Miniscript / output descriptors** — user is most interested in this one; policy→miniscript compilation, descriptor parsing, script generation
 
+## Simplifications vs Bitcoin Core ("Lite → Full" Upgrade Path)
+
+The current implementation prioritizes correctness of algorithms and interfaces over production-scale performance. Every simplification below is a candidate for a "Full" variant that could handle mainnet-scale load. The hexagonal architecture makes this feasible — most upgrades are new adapters behind existing port traits, leaving btc-domain untouched.
+
+### UTXO Storage
+- **Lite (current):** `HashMap<(Txid, u32), UtxoEntry>` in memory. Simple, fast for tests.
+- **Full:** LevelDB/RocksDB-backed `CCoinsViewDB` with a multi-layer write-back cache (`CCoinsViewCache` → `CCoinsViewBacked` → DB). Batch writes, memory-mapped I/O. Required for mainnet's ~180M UTXOs.
+- **Upgrade path:** New adapter behind the existing `UtxoStore` port trait.
+
+### Block Storage
+- **Lite (current):** `HashMap<Hash256, Block>` in memory. No disk persistence, no pruning.
+- **Full:** Raw blocks split across `blk*.dat` files (~128MB each) with a separate block index DB for O(1) lookup by hash or height. Pruning support to cap disk usage.
+- **Upgrade path:** New adapter behind the existing `BlockStore` port trait.
+
+### Mempool
+- **Lite (current):** Basic ancestor/descendant tracking, simplified eviction and mining selection. Linear scans for candidate selection.
+- **Full:** Multi-index container (by feerate, by ancestor score, by time) for O(1) best-candidate selection. Incremental feerate comparison for eviction. Full package relay support (BIP331).
+- **Upgrade path:** Mostly internal to the mempool adapter; port trait stays the same.
+
+### Script Verification
+- **Lite (current):** Single-threaded, sequential signature checks during block validation.
+- **Full:** `CCheckQueue`-style thread pool distributing signature verification across all CPU cores. Particularly important for blocks with many inputs.
+- **Upgrade path:** Parallel iterator in the block validation loop (e.g., `rayon`), or a dedicated verification queue in btc-application.
+
+### Peer / Address Management
+- **Lite (current):** Simple new/tried tables with basic eviction and source tracking.
+- **Full:** Bucketed address manager with deterministic bucket placement (hash of address + source + group) to resist eclipse attacks. 1024 "new" buckets, 256 "tried" buckets.
+- **Upgrade path:** Replace the address manager adapter; the port trait already supports the needed operations.
+
+### Block Index
+- **Lite (current):** `HashMap` with linear ancestor traversal.
+- **Full:** Linked tree with `pskip` pointers for O(log n) ancestor lookups (used heavily in reorg detection and MTP calculation). Persisted to LevelDB.
+- **Upgrade path:** New `BlockIndex` implementation in btc-application with skip-list pointers; storage adapter for persistence.
+
+### Fee Estimation
+- **Lite (current):** Sliding window of recent block median fee rates.
+- **Full:** Exponentially-decaying moving average across multiple confirmation-target buckets, tracking where transactions actually confirmed. Core uses ~40 fee rate buckets with 3 decay periods.
+- **Upgrade path:** Replace the fee estimator in btc-application; the port trait already returns fee rate estimates by target.
+
+### Wallet Persistence
+- **Lite (planned for Session 10):** Simple binary file serialization of keys, UTXOs, addresses, and sync cursor.
+- **Full:** SQLite-backed descriptor wallet (Core's post-v0.21 model) with proper schema, WAL journaling, concurrent RPC access support.
+- **Upgrade path:** New adapter behind a `WalletStore` port trait.
+
+### General Strategy
+The "Lite" versions are correct — they implement the same algorithms, validate the same rules, and produce the same results as Core. The "Full" versions add the infrastructure needed to do so under mainnet load (~1M transactions/day, ~180M UTXOs, thousands of peers, multi-GB block storage). The hexagonal architecture means most upgrades are isolated to new adapters, with no changes to domain logic or consensus rules.
+
 ## Known Coverage Gaps
 
 - `btc-ports` has 0 tests (trait definitions only, but could test trait object construction)
