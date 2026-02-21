@@ -12,7 +12,7 @@
 
 use async_trait::async_trait;
 use btc_domain::primitives::{Block, Transaction};
-use btc_ports::{PeerManager, PeerInfo};
+use btc_ports::{NetworkMessage, PeerManager, PeerInfo};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,7 +31,7 @@ const MAINNET_MAGIC: [u8; 4] = [0xF9, 0xBE, 0xB4, 0xD9];
 const PROTOCOL_VERSION: u32 = 70016;
 
 /// User agent string
-const USER_AGENT: &str = "/BitcoinRust:0.1.0/";
+const USER_AGENT: &str = "/AgenticBitcoin:0.1.0/";
 
 /// Default misbehaviour ban threshold
 const BAN_SCORE_THRESHOLD: i32 = 100;
@@ -504,6 +504,139 @@ impl PeerManager for TcpPeerManager {
         tracing::debug!("Broadcast block {} inv to {} peers", hash, count);
         Ok(count)
     }
+
+    async fn send_to_peer(
+        &self,
+        peer_id: u64,
+        message: NetworkMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let peers = self.peers.read().await;
+        let conn = peers
+            .get(&peer_id)
+            .ok_or_else(|| format!("Unknown peer {}", peer_id))?;
+        let stream = conn
+            .stream
+            .as_ref()
+            .ok_or_else(|| format!("No stream for peer {}", peer_id))?;
+
+        let (command, payload) = encode_network_message(&message);
+        Self::send_message(stream, &command, &payload).await
+    }
+}
+
+/// Encode a NetworkMessage into a command string and payload bytes.
+fn encode_network_message(msg: &NetworkMessage) -> (String, Vec<u8>) {
+    match msg {
+        NetworkMessage::GetHeaders {
+            version,
+            block_locator,
+            hash_stop,
+        } => {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&version.to_le_bytes());
+            // varint count of locator hashes
+            push_varint_net(&mut payload, block_locator.len() as u64);
+            for hash in block_locator {
+                payload.extend_from_slice(hash.as_bytes());
+            }
+            payload.extend_from_slice(hash_stop.as_bytes());
+            ("getheaders".to_string(), payload)
+        }
+        NetworkMessage::GetBlocks {
+            version,
+            block_locator,
+            hash_stop,
+        } => {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&version.to_le_bytes());
+            push_varint_net(&mut payload, block_locator.len() as u64);
+            for hash in block_locator {
+                payload.extend_from_slice(hash.as_bytes());
+            }
+            payload.extend_from_slice(hash_stop.as_bytes());
+            ("getblocks".to_string(), payload)
+        }
+        NetworkMessage::GetData { items } => {
+            let mut payload = Vec::new();
+            push_varint_net(&mut payload, items.len() as u64);
+            for item in items {
+                match item {
+                    btc_ports::InventoryItem::Tx(txid) => {
+                        payload.extend_from_slice(&1u32.to_le_bytes()); // MSG_TX
+                        payload.extend_from_slice(txid.as_bytes());
+                    }
+                    btc_ports::InventoryItem::Block(hash) => {
+                        payload.extend_from_slice(&2u32.to_le_bytes()); // MSG_BLOCK
+                        payload.extend_from_slice(hash.as_bytes());
+                    }
+                }
+            }
+            ("getdata".to_string(), payload)
+        }
+        NetworkMessage::Inv { items } => {
+            let mut payload = Vec::new();
+            push_varint_net(&mut payload, items.len() as u64);
+            for item in items {
+                match item {
+                    btc_ports::InventoryItem::Tx(txid) => {
+                        payload.extend_from_slice(&1u32.to_le_bytes());
+                        payload.extend_from_slice(txid.as_bytes());
+                    }
+                    btc_ports::InventoryItem::Block(hash) => {
+                        payload.extend_from_slice(&2u32.to_le_bytes());
+                        payload.extend_from_slice(hash.as_bytes());
+                    }
+                }
+            }
+            ("inv".to_string(), payload)
+        }
+        NetworkMessage::Ping { nonce } => {
+            ("ping".to_string(), nonce.to_le_bytes().to_vec())
+        }
+        NetworkMessage::Pong { nonce } => {
+            ("pong".to_string(), nonce.to_le_bytes().to_vec())
+        }
+        NetworkMessage::Verack => ("verack".to_string(), Vec::new()),
+        NetworkMessage::Headers { headers } => {
+            let mut payload = Vec::new();
+            push_varint_net(&mut payload, headers.len() as u64);
+            for hdr in headers {
+                payload.extend_from_slice(&hdr.version.to_le_bytes());
+                payload.extend_from_slice(hdr.prev_block_hash.as_bytes());
+                payload.extend_from_slice(hdr.merkle_root.as_bytes());
+                payload.extend_from_slice(&hdr.time.to_le_bytes());
+                payload.extend_from_slice(&hdr.bits.to_le_bytes());
+                payload.extend_from_slice(&hdr.nonce.to_le_bytes());
+                payload.push(0); // tx_count = 0 for headers message
+            }
+            ("headers".to_string(), payload)
+        }
+        // For Version, Tx, Block — these are typically handled at a higher level
+        // or via dedicated methods. Provide a basic fallback:
+        NetworkMessage::Version { .. } => {
+            // The version message is built via build_version_payload() above
+            ("version".to_string(), Vec::new())
+        }
+        NetworkMessage::Tx { .. } => ("tx".to_string(), Vec::new()),
+        NetworkMessage::Block { .. } => ("block".to_string(), Vec::new()),
+        NetworkMessage::Addr { .. } => ("addr".to_string(), Vec::new()),
+    }
+}
+
+/// Push a Bitcoin-style varint (for network serialization)
+fn push_varint_net(buf: &mut Vec<u8>, value: u64) {
+    if value < 0xfd {
+        buf.push(value as u8);
+    } else if value <= 0xffff {
+        buf.push(0xfd);
+        buf.extend_from_slice(&(value as u16).to_le_bytes());
+    } else if value <= 0xffff_ffff {
+        buf.push(0xfe);
+        buf.extend_from_slice(&(value as u32).to_le_bytes());
+    } else {
+        buf.push(0xff);
+        buf.extend_from_slice(&value.to_le_bytes());
+    }
 }
 
 // ----- Stub peer manager (kept for tests and simple setups) -----
@@ -610,6 +743,15 @@ impl PeerManager for StubPeerManager {
             count
         );
         Ok(count)
+    }
+
+    async fn send_to_peer(
+        &self,
+        peer_id: u64,
+        message: NetworkMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        tracing::debug!("Stub: send message to peer {}: {:?}", peer_id, message);
+        Ok(())
     }
 }
 

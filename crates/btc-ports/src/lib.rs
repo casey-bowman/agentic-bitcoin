@@ -49,7 +49,7 @@ pub mod rpc;
 
 // Re-export commonly used items
 pub use storage::{BlockStore, ChainStateStore, UtxoEntry, BlockIndexEntry};
-pub use network::{PeerManager, NetworkMessage, PeerInfo, PeerEvent, NetworkListener};
+pub use network::{PeerManager, NetworkMessage, InventoryItem, PeerInfo, PeerEvent, NetworkListener};
 pub use mining::{BlockTemplateProvider, BlockTemplate, BlockSubmitter};
 pub use mempool::{MempoolPort, MempoolEntry, MempoolInfo};
 pub use wallet::{WalletPort, Balance};

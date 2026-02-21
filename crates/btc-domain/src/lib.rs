@@ -8,6 +8,8 @@ pub mod consensus;
 pub mod crypto;
 pub mod primitives;
 pub mod script;
+pub mod policy;
+pub mod wallet;
 
 // Re-export common types for convenience
 pub use chain_params::ChainParams;
@@ -20,6 +22,6 @@ pub use primitives::{
 pub use script::{Opcodes, Script, ScriptBuilder};
 pub use script::{
     ScriptError, ScriptFlags, ScriptInterpreter, SignatureChecker,
-    NoSigChecker, verify_script, is_push_only,
+    NoSigChecker, verify_script, verify_script_with_witness, is_push_only,
 };
 pub use crypto::signing::{TransactionSignatureChecker, verify_ecdsa};

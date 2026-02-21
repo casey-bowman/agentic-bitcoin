@@ -98,6 +98,94 @@ impl RpcHandler for BlockchainRpcHandler {
     }
 }
 
+/// RPC handler for wallet operations
+pub struct WalletRpcHandler {
+    wallet: Arc<dyn btc_ports::WalletPort>,
+}
+
+impl WalletRpcHandler {
+    pub fn new(wallet: Arc<dyn btc_ports::WalletPort>) -> Self {
+        WalletRpcHandler { wallet }
+    }
+}
+
+#[async_trait]
+impl RpcHandler for WalletRpcHandler {
+    async fn handle_request(&self, method: &str, params: &Value) -> Result<Option<Value>, btc_ports::RpcError> {
+        match method {
+            "getbalance" => {
+                let balance = self.wallet
+                    .get_balance()
+                    .await
+                    .map_err(|e| btc_ports::RpcError::internal_error(e.to_string()))?;
+                // Return confirmed balance in BTC
+                let btc = balance.confirmed.as_sat() as f64 / 100_000_000.0;
+                Ok(Some(json!(btc)))
+            }
+            "getwalletinfo" => {
+                let balance = self.wallet
+                    .get_balance()
+                    .await
+                    .map_err(|e| btc_ports::RpcError::internal_error(e.to_string()))?;
+                Ok(Some(json!({
+                    "walletname": "default",
+                    "walletversion": 1,
+                    "format": "memory",
+                    "balance": balance.confirmed.as_sat() as f64 / 100_000_000.0,
+                    "unconfirmed_balance": balance.unconfirmed.as_sat() as f64 / 100_000_000.0,
+                    "immature_balance": balance.immature.as_sat() as f64 / 100_000_000.0,
+                    "txcount": 0,
+                    "keypoolsize": 0,
+                    "paytxfee": 0.0,
+                    "private_keys_enabled": true
+                })))
+            }
+            "getnewaddress" => {
+                let label = params.get(0)
+                    .and_then(|v| v.as_str());
+                let address = self.wallet
+                    .get_new_address(label)
+                    .await
+                    .map_err(|e| btc_ports::RpcError::internal_error(e.to_string()))?;
+                Ok(Some(Value::String(address)))
+            }
+            "listunspent" => {
+                let min_conf = params.get(0)
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1) as u32;
+                let utxos = self.wallet
+                    .list_unspent(min_conf, None)
+                    .await
+                    .map_err(|e| btc_ports::RpcError::internal_error(e.to_string()))?;
+                let result: Vec<Value> = utxos.iter().map(|u| {
+                    json!({
+                        "txid": u.outpoint.txid.to_hex_reversed(),
+                        "vout": u.outpoint.vout,
+                        "amount": u.output.value.as_sat() as f64 / 100_000_000.0,
+                        "confirmations": u.confirmations,
+                        "spendable": true,
+                        "solvable": true
+                    })
+                }).collect();
+                Ok(Some(json!(result)))
+            }
+            "importprivkey" => {
+                let wif = params.get(0)
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| btc_ports::RpcError::invalid_params("missing WIF key"))?;
+                let label = params.get(1).and_then(|v| v.as_str());
+                let rescan = params.get(2).and_then(|v| v.as_bool()).unwrap_or(true);
+                self.wallet
+                    .import_key(wif, label, rescan)
+                    .await
+                    .map_err(|e| btc_ports::RpcError::internal_error(e.to_string()))?;
+                Ok(Some(Value::Null))
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
 /// RPC handler for mining operations
 pub struct MiningRpcHandler {
     mining: Arc<MiningService>,

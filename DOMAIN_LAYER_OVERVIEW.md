@@ -1,9 +1,9 @@
-# Bitcoin Rust - Domain Layer (btc-domain crate)
+# Agentic Bitcoin - Domain Layer (btc-domain crate)
 
 ## Project Structure
 
 ```
-bitcoin-rust/
+agentic-bitcoin/
 └── crates/
     └── btc-domain/
         ├── Cargo.toml

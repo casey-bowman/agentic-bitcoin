@@ -10,7 +10,7 @@ pub mod witness;
 
 pub use interpreter::{
     ScriptError, ScriptFlags, ScriptInterpreter, SignatureChecker,
-    NoSigChecker, verify_script, is_push_only,
+    NoSigChecker, verify_script, verify_script_with_witness, is_push_only,
 };
 pub use opcodes::Opcodes;
 pub use script::{Script, ScriptBuilder};

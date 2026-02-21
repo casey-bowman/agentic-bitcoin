@@ -1,8 +1,17 @@
-//! In-memory storage implementations
+//! Storage implementations
 //!
-//! Provides HashMap-based implementations of BlockStore and ChainStateStore traits.
-//! These are suitable for testing and development. Production deployments should use
-//! persistent storage backends like LevelDB or RocksDB.
+//! Provides both in-memory (HashMap-based) and persistent (RocksDB-based)
+//! implementations of BlockStore and ChainStateStore traits.
+//!
+//! - `InMemoryBlockStore` / `InMemoryChainStateStore` — suitable for testing
+//! - `RocksDbBlockStore` / `RocksDbChainStateStore` — persistent, crash-safe
+//!   (requires the `rocksdb-storage` feature)
+
+#[cfg(feature = "rocksdb-storage")]
+pub mod rocksdb_store;
+
+#[cfg(feature = "rocksdb-storage")]
+pub use rocksdb_store::{RocksDbBlockStore, RocksDbChainStateStore};
 
 use async_trait::async_trait;
 use btc_domain::primitives::{Block, BlockHash, Txid};

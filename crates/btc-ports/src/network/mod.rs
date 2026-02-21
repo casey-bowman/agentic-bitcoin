@@ -199,6 +199,22 @@ pub trait PeerManager: Send + Sync {
     ///
     /// Returns the number of peers the message was sent to.
     async fn broadcast_block(&self, block: &Block) -> Result<usize, Box<dyn Error + Send + Sync>>;
+
+    /// Sends a network message to a specific peer.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_id` - The peer to send to
+    /// * `message` - The message to send
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success.
+    async fn send_to_peer(
+        &self,
+        peer_id: u64,
+        message: NetworkMessage,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
 
 /// Port trait for receiving network events.

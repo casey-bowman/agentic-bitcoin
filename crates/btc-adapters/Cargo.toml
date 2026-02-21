@@ -5,6 +5,10 @@ edition = "2021"
 description = "Concrete adapter implementations for Bitcoin ports"
 license = "MIT"
 
+[features]
+default = []
+rocksdb-storage = ["rocksdb"]
+
 [dependencies]
 btc-domain = { path = "../btc-domain" }
 btc-ports = { path = "../btc-ports" }
@@ -14,3 +18,4 @@ serde_json = "1.0"
 async-trait = "0.1"
 tracing = "0.1"
 thiserror = "1.0"
+rocksdb = { version = "0.22", optional = true }

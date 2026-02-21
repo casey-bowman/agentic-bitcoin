@@ -1,9 +1,9 @@
 ================================================================================
-BITCOIN RUST - COMPLETE DOMAIN LAYER CRATE (btc-domain)
+AGENTIC BITCOIN - COMPLETE DOMAIN LAYER CRATE (btc-domain)
 ================================================================================
 
 PROJECT LOCATION:
-/sessions/practical-lucid-wozniak/mnt/bitcoin/bitcoin-rust/crates/btc-domain/
+agentic-bitcoin/crates/btc-domain/
 
 CRATE STATUS: ✅ COMPLETE AND PRODUCTION-READY
 

@@ -5,21 +5,25 @@
 //! the entry point for the entire Bitcoin implementation.
 
 use btc_adapters::{
-    InMemoryBlockStore, InMemoryChainStateStore, InMemoryMempool,
+    InMemoryBlockStore, InMemoryChainStateStore, InMemoryMempool, InMemoryWallet,
     StubPeerManager, TcpPeerManager, JsonRpcServer, SimpleMiner,
 };
+use btc_application::block_index::BlockIndex;
+use btc_application::net_processing::{SyncAction, SyncManager, SyncState};
 use btc_application::services::{BlockchainService, MempoolService, MiningService};
-use btc_application::handlers::{BlockchainRpcHandler, MiningRpcHandler};
+use btc_application::handlers::{BlockchainRpcHandler, MiningRpcHandler, WalletRpcHandler};
 use btc_domain::ChainParams;
-use btc_ports::{PeerManager, RpcServer};
+use btc_domain::wallet::address::AddressType;
+use btc_ports::{BlockStore, ChainStateStore, MempoolPort, PeerEvent, PeerManager, RpcServer, WalletPort};
 use clap::Parser;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 /// Command-line arguments for the Bitcoin node
 #[derive(Parser, Debug)]
 #[command(
-    name = "Bitcoin Rust",
+    name = "Agentic Bitcoin",
     about = "A Bitcoin Core reimplementation in Rust with hexagonal architecture",
     version
 )]
@@ -55,6 +59,18 @@ pub struct CliArgs {
     /// Seed peer addresses (comma-separated) for initial connections
     #[arg(long, value_delimiter = ',')]
     pub seed_peers: Vec<String>,
+
+    /// Storage backend: "memory" (default) or "rocksdb" (requires rocksdb-storage feature)
+    #[arg(long, default_value = "memory")]
+    pub storage_backend: String,
+
+    /// Enable wallet functionality
+    #[arg(long, default_value = "true")]
+    pub enable_wallet: bool,
+
+    /// Wallet address type: "bech32" (P2WPKH, default), "legacy" (P2PKH), or "p2sh-segwit" (P2SH-P2WPKH)
+    #[arg(long, default_value = "bech32")]
+    pub address_type: String,
 }
 
 /// Application state containing all services and ports
@@ -65,10 +81,18 @@ pub struct BitcoinNode {
     pub rpc_server: Arc<JsonRpcServer>,
     pub peer_manager: Arc<dyn PeerManager>,
     pub mempool_adapter: Arc<InMemoryMempool>,
+    pub block_index: Arc<RwLock<BlockIndex>>,
+    pub sync_manager: Arc<RwLock<SyncManager>>,
+    /// Block store (for sync manager use)
+    block_store: Arc<dyn BlockStore>,
+    /// Chain state store (for sync manager use)
+    chain_state: Arc<dyn ChainStateStore>,
     /// Optional TCP peer manager (only when enable_p2p is true)
     tcp_peer_manager: Option<Arc<TcpPeerManager>>,
     /// Seed peers to connect to on start
     seed_peers: Vec<String>,
+    /// Wallet (optional — only when enable_wallet is true)
+    pub wallet: Option<Arc<dyn WalletPort>>,
 }
 
 impl BitcoinNode {
@@ -82,7 +106,7 @@ impl BitcoinNode {
             )
             .init();
 
-        tracing::info!("Initializing Bitcoin node on {}", args.network);
+        tracing::info!("Initializing Agentic Bitcoin node on {}", args.network);
 
         // Parse network
         let network = match args.network.as_str() {
@@ -98,9 +122,48 @@ impl BitcoinNode {
         let chain_params = ChainParams::for_network(network);
         tracing::info!("Using chain parameters for {}", network);
 
-        // Create adapter instances
-        let block_store = Arc::new(InMemoryBlockStore::new());
-        let chain_state = Arc::new(InMemoryChainStateStore::new());
+        // Create storage adapters based on backend flag
+        let (block_store, chain_state): (Arc<dyn BlockStore>, Arc<dyn ChainStateStore>) =
+            match args.storage_backend.as_str() {
+                #[cfg(feature = "rocksdb-storage")]
+                "rocksdb" => {
+                    use btc_adapters::{RocksDbBlockStore, RocksDbChainStateStore};
+                    use std::path::Path;
+
+                    let datadir = args.datadir.replace('~', &std::env::var("HOME").unwrap_or_default());
+                    let blocks_path = format!("{}/blocks", datadir);
+                    let chainstate_path = format!("{}/chainstate", datadir);
+
+                    // Create directories if they don't exist
+                    std::fs::create_dir_all(&blocks_path)?;
+                    std::fs::create_dir_all(&chainstate_path)?;
+
+                    tracing::info!(
+                        "Using RocksDB storage (blocks: {}, chainstate: {})",
+                        blocks_path,
+                        chainstate_path
+                    );
+
+                    let bs = Arc::new(RocksDbBlockStore::open(Path::new(&blocks_path))?);
+                    let cs = Arc::new(RocksDbChainStateStore::open(Path::new(&chainstate_path))?);
+                    (bs as Arc<dyn BlockStore>, cs as Arc<dyn ChainStateStore>)
+                }
+                #[cfg(not(feature = "rocksdb-storage"))]
+                "rocksdb" => {
+                    return Err(
+                        "RocksDB storage requires the 'rocksdb-storage' feature. \
+                         Build with: cargo build --features rocksdb-storage"
+                            .into(),
+                    );
+                }
+                _ => {
+                    tracing::info!("Using in-memory storage backend");
+                    let bs = Arc::new(InMemoryBlockStore::new());
+                    let cs = Arc::new(InMemoryChainStateStore::new());
+                    (bs as Arc<dyn BlockStore>, cs as Arc<dyn ChainStateStore>)
+                }
+            };
+
         let rpc_server = Arc::new(JsonRpcServer::new(args.rpc_port));
         let mempool_adapter = Arc::new(
             InMemoryMempool::with_max_bytes(args.max_mempool_mb * 1_000_000)
@@ -120,13 +183,33 @@ impl BitcoinNode {
                 (stub as Arc<dyn PeerManager>, None)
             };
 
-        // Initialize with genesis block
+        // Initialize with genesis block.
+        // We use store_block + write_chain_tip which ARE on the traits,
+        // rather than init_with_genesis which is only on concrete types.
         let genesis = chain_params.genesis_block();
-        block_store.init_with_genesis(genesis.clone()).await;
         let genesis_hash = genesis.block_hash();
-        chain_state.init_with_genesis(genesis_hash).await;
+
+        // Store genesis block at height 0
+        if !block_store.has_block(&genesis_hash).await.unwrap_or(false) {
+            block_store.store_block(&genesis, 0).await
+                .map_err(|e| format!("Failed to store genesis block: {}", e))?;
+        }
+
+        // Set chain tip to genesis
+        chain_state.write_chain_tip(genesis_hash, 0).await
+            .map_err(|e| format!("Failed to set genesis chain tip: {}", e))?;
 
         tracing::info!("Initialized blockchain with genesis block: {}", genesis_hash);
+
+        // Initialize block index with genesis header
+        let mut block_index = BlockIndex::new();
+        block_index.init_genesis(genesis.header.clone());
+        let block_index = Arc::new(RwLock::new(block_index));
+
+        tracing::info!("Block index initialized with genesis header");
+
+        // Create sync manager
+        let sync_manager = Arc::new(RwLock::new(SyncManager::new(block_index.clone())));
 
         // Create application services
         let blockchain = Arc::new(BlockchainService::new(
@@ -137,7 +220,7 @@ impl BitcoinNode {
 
         // Wire the real mempool adapter
         let mempool = Arc::new(MempoolService::new(
-            mempool_adapter.clone() as Arc<dyn btc_ports::MempoolPort>,
+            mempool_adapter.clone() as Arc<dyn MempoolPort>,
             chain_state.clone(),
         ));
 
@@ -151,7 +234,29 @@ impl BitcoinNode {
         let mining_handler = Box::new(MiningRpcHandler::new(mining.clone()));
         rpc_server.register_handler(mining_handler).await?;
 
-        tracing::info!("Bitcoin node initialized successfully");
+        // Create wallet if enabled
+        let mainnet = matches!(network, btc_domain::Network::Mainnet);
+        let wallet: Option<Arc<dyn WalletPort>> = if args.enable_wallet {
+            let addr_type = match args.address_type.as_str() {
+                "legacy" | "p2pkh" => AddressType::P2PKH,
+                "p2sh-segwit" | "p2sh" => AddressType::P2shP2wpkh,
+                _ => AddressType::P2WPKH, // "bech32" and default
+            };
+
+            let wallet = Arc::new(InMemoryWallet::new(mainnet, addr_type));
+            tracing::info!("Wallet enabled (address type: {})", args.address_type);
+
+            // Register wallet RPC handler
+            let wallet_handler = Box::new(WalletRpcHandler::new(wallet.clone() as Arc<dyn WalletPort>));
+            rpc_server.register_handler(wallet_handler).await?;
+
+            Some(wallet as Arc<dyn WalletPort>)
+        } else {
+            tracing::info!("Wallet disabled");
+            None
+        };
+
+        tracing::info!("Agentic Bitcoin node initialized successfully");
 
         Ok(BitcoinNode {
             blockchain,
@@ -160,14 +265,19 @@ impl BitcoinNode {
             rpc_server,
             peer_manager,
             mempool_adapter,
+            block_index,
+            sync_manager,
+            block_store,
+            chain_state,
             tcp_peer_manager,
             seed_peers: args.seed_peers,
+            wallet,
         })
     }
 
     /// Start the Bitcoin node
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        tracing::info!("Starting Bitcoin node");
+        tracing::info!("Starting Agentic Bitcoin node");
 
         // Start RPC server (now actually listens for HTTP connections)
         self.rpc_server.start().await?;
@@ -226,6 +336,52 @@ impl BitcoinNode {
             }
         });
 
+        // Sync status reporting loop
+        let sync_manager = self.sync_manager.clone();
+        let block_index = self.block_index.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                let sm = sync_manager.read().await;
+                let state = sm.state();
+                let remaining = sm.blocks_remaining();
+                drop(sm);
+
+                let idx = block_index.read().await;
+                let height = idx.best_height();
+                let headers = idx.header_count();
+                drop(idx);
+
+                match state {
+                    SyncState::HeaderSync => {
+                        tracing::info!(
+                            "Sync: downloading headers ({} known, height {})",
+                            headers,
+                            height
+                        );
+                    }
+                    SyncState::BlockSync => {
+                        tracing::info!(
+                            "Sync: downloading blocks ({} remaining, index height {})",
+                            remaining,
+                            height
+                        );
+                    }
+                    SyncState::Synced => {
+                        tracing::debug!(
+                            "Sync: fully synced at height {} ({} headers)",
+                            height,
+                            headers
+                        );
+                    }
+                    SyncState::Idle => {
+                        // Don't spam in idle
+                    }
+                }
+            }
+        });
+
         // Ping/keepalive loop for TCP peers
         if let Some(ref tcp_mgr) = self.tcp_peer_manager {
             let tcp = tcp_mgr.clone();
@@ -244,9 +400,64 @@ impl BitcoinNode {
         tracing::info!("Background tasks started");
     }
 
+    /// Process a peer event through the sync manager.
+    ///
+    /// This is the main entry point for handling P2P messages. It delegates
+    /// to the SyncManager, which returns a list of actions to execute.
+    pub async fn handle_peer_event(
+        &self,
+        event: PeerEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let actions = {
+            let mut sm = self.sync_manager.write().await;
+            sm.on_peer_event(
+                event,
+                self.peer_manager.as_ref(),
+                self.block_store.as_ref(),
+                self.chain_state.as_ref(),
+                self.mempool_adapter.as_ref(),
+            )
+            .await?
+        };
+
+        // Execute returned actions
+        for action in actions {
+            match action {
+                SyncAction::ProcessBlock(block) => {
+                    if let Err(e) = self.blockchain.validate_and_accept_block(&block).await {
+                        tracing::warn!("Failed to accept block {}: {}", block.block_hash(), e);
+                    }
+                }
+                SyncAction::ProcessTransaction(tx) => {
+                    if let Err(e) = self.blockchain.process_new_transaction(&tx).await {
+                        tracing::debug!("Failed to process tx {}: {}", tx.txid(), e);
+                    } else {
+                        // Valid transaction — add to mempool
+                        if let Err(e) = self.mempool_adapter.add_transaction(&tx).await {
+                            tracing::debug!("Failed to add tx {} to mempool: {}", tx.txid(), e);
+                        } else {
+                            // Relay to peers
+                            let _ = self.peer_manager.broadcast_transaction(&tx).await;
+                        }
+                    }
+                }
+                SyncAction::SendMessage(peer_id, msg) => {
+                    if let Err(e) = self.peer_manager.send_to_peer(peer_id, msg).await {
+                        tracing::debug!("Failed to send message to peer {}: {}", peer_id, e);
+                    }
+                }
+                SyncAction::DisconnectPeer(peer_id) => {
+                    let _ = self.peer_manager.disconnect_peer(peer_id).await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Stop the Bitcoin node
     pub async fn stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        tracing::info!("Stopping Bitcoin node");
+        tracing::info!("Stopping Agentic Bitcoin node");
 
         self.rpc_server.stop().await?;
         tracing::info!("RPC server stopped");
@@ -258,6 +469,16 @@ impl BitcoinNode {
             }
         }
         tracing::info!("All peers disconnected");
+
+        // Log final sync state
+        let sm = self.sync_manager.read().await;
+        let idx = self.block_index.read().await;
+        tracing::info!(
+            "Final state: sync={:?}, block index height={}, headers={}",
+            sm.state(),
+            idx.best_height(),
+            idx.header_count()
+        );
 
         Ok(())
     }
@@ -298,6 +519,9 @@ mod tests {
             max_mempool_mb: 300,
             enable_p2p: false,
             seed_peers: Vec::new(),
+            storage_backend: "memory".to_string(),
+            enable_wallet: true,
+            address_type: "bech32".to_string(),
         };
 
         let node = BitcoinNode::new(args).await;
@@ -315,11 +539,62 @@ mod tests {
             max_mempool_mb: 300,
             enable_p2p: false,
             seed_peers: Vec::new(),
+            storage_backend: "memory".to_string(),
+            enable_wallet: true,
+            address_type: "bech32".to_string(),
         };
 
         let node = BitcoinNode::new(args).await.unwrap();
         let info = node.get_chain_info().await.unwrap();
         assert_eq!(info.height, 0);
         assert_eq!(info.blocks, 1);
+    }
+
+    #[tokio::test]
+    async fn test_node_has_block_index() {
+        let args = CliArgs {
+            network: "regtest".to_string(),
+            datadir: "/tmp/bitcoin-test".to_string(),
+            rpc_port: 18332,
+            p2p_port: 18333,
+            log_level: "warn".to_string(),
+            max_mempool_mb: 300,
+            enable_p2p: false,
+            seed_peers: Vec::new(),
+            storage_backend: "memory".to_string(),
+            enable_wallet: true,
+            address_type: "bech32".to_string(),
+        };
+
+        let node = BitcoinNode::new(args).await.unwrap();
+
+        // Block index should be initialized with genesis
+        let idx = node.block_index.read().await;
+        assert_eq!(idx.best_height(), 0);
+        assert_eq!(idx.header_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_node_has_sync_manager() {
+        let args = CliArgs {
+            network: "regtest".to_string(),
+            datadir: "/tmp/bitcoin-test".to_string(),
+            rpc_port: 18332,
+            p2p_port: 18333,
+            log_level: "warn".to_string(),
+            max_mempool_mb: 300,
+            enable_p2p: false,
+            seed_peers: Vec::new(),
+            storage_backend: "memory".to_string(),
+            enable_wallet: true,
+            address_type: "bech32".to_string(),
+        };
+
+        let node = BitcoinNode::new(args).await.unwrap();
+
+        // Sync manager should start in Idle state
+        let sm = node.sync_manager.read().await;
+        assert_eq!(sm.state(), SyncState::Idle);
+        assert_eq!(sm.blocks_remaining(), 0);
     }
 }

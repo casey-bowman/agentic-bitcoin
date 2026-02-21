@@ -17,6 +17,8 @@ pub mod mempool;
 
 // Re-exports for convenience
 pub use storage::{InMemoryBlockStore, InMemoryChainStateStore};
+#[cfg(feature = "rocksdb-storage")]
+pub use storage::{RocksDbBlockStore, RocksDbChainStateStore};
 pub use network::{StubPeerManager, TcpPeerManager};
 pub use rpc::JsonRpcServer;
 pub use mining::SimpleMiner;

@@ -21,7 +21,8 @@
 
 use crate::crypto::hashing;
 use crate::script::opcodes::Opcodes;
-use crate::script::script::{Script, ScriptInstruction};
+use crate::script::script::{Script, ScriptBuilder, ScriptInstruction};
+use crate::script::witness::Witness;
 use std::cmp;
 
 // ---------------------------------------------------------------------------
@@ -231,6 +232,14 @@ pub enum ScriptError {
     ScriptFailed,
     /// Signature check not available (no checker provided)
     SigCheckNotAvailable,
+    /// Schnorr signature has invalid size (not 64 or 65 bytes)
+    SchnorrSigSize,
+    /// Schnorr signature verification failed
+    SchnorrSigVerifyFail,
+    /// Taproot control block has wrong size
+    TaprootWrongControlSize,
+    /// Witness program is empty (Taproot requires at least one witness item)
+    WitnessProgramEmpty,
 }
 
 impl std::fmt::Display for ScriptError {
@@ -272,6 +281,19 @@ pub trait SignatureChecker: Send + Sync {
 
     /// Verify a sequence constraint (OP_CHECKSEQUENCEVERIFY / BIP112)
     fn check_sequence(&self, sequence: i64) -> bool;
+
+    /// Verify a BIP340 Schnorr signature for Taproot key-path spending.
+    ///
+    /// * `sig` - 64-byte Schnorr signature (sighash type already stripped)
+    /// * `pubkey` - 32-byte x-only public key (the output key / witness program)
+    ///
+    /// The checker computes the Taproot sighash (tagged_hash("TapSighash", ...))
+    /// and verifies the signature against the public key.
+    ///
+    /// Default implementation returns false (for non-signing checkers).
+    fn check_schnorr_sig(&self, _sig: &[u8], _pubkey: &[u8]) -> bool {
+        false
+    }
 }
 
 /// A no-op signature checker that always returns false.
@@ -813,14 +835,10 @@ impl<'a> ScriptInterpreter<'a> {
                     self.push(result.to_vec())?;
                 }
                 Opcodes::OP_SHA1 => {
-                    // SHA-1 is still a valid opcode in Bitcoin
-                    // We implement it with a simple hash
-                    // For now, use SHA-256 as a placeholder since sha1 crate
-                    // is not in our dependencies. Real Bitcoin nodes use SHA-1 here.
-                    // TODO: Add sha1 crate dependency
+                    // SHA-1 hash (consensus-required opcode)
                     let data = self.pop()?;
-                    let hash = hashing::sha256(&data);
-                    self.push(hash.as_bytes()[..20].to_vec())?;
+                    let hash = hashing::sha1(&data);
+                    self.push(hash.to_vec())?;
                 }
                 Opcodes::OP_SHA256 => {
                     let data = self.pop()?;
@@ -1097,6 +1115,20 @@ pub fn verify_script(
     flags: ScriptFlags,
     checker: &dyn SignatureChecker,
 ) -> Result<(), ScriptError> {
+    verify_script_with_witness(script_sig, script_pubkey, &Witness::new(), flags, checker)
+}
+
+/// Verify a script with witness data (BIP141 SegWit support).
+///
+/// This is the full entry point that accepts witness data for SegWit
+/// transaction inputs.
+pub fn verify_script_with_witness(
+    script_sig: &Script,
+    script_pubkey: &Script,
+    witness: &Witness,
+    flags: ScriptFlags,
+    checker: &dyn SignatureChecker,
+) -> Result<(), ScriptError> {
     // Step 1: Evaluate scriptSig
     let mut interp = ScriptInterpreter::new(flags, checker);
     interp.eval_script(script_sig)?;
@@ -1115,7 +1147,24 @@ pub fn verify_script(
         return Err(ScriptError::EvalFalse);
     }
 
-    // Step 4: P2SH evaluation
+    // Step 4: Native witness program (BIP141)
+    // If scriptPubKey is a witness program, verify the witness directly
+    let mut had_witness = false;
+    if flags.has(ScriptFlags::VERIFY_WITNESS) {
+        if script_pubkey.is_witness_program() {
+            // For native witness, scriptSig MUST be empty
+            if !script_sig.is_empty() {
+                return Err(ScriptError::WitnessProgramMismatch);
+            }
+
+            let version = script_pubkey.witness_version().unwrap();
+            let program = script_pubkey.witness_program().unwrap();
+            verify_witness_program(witness, version, program, flags, checker)?;
+            had_witness = true;
+        }
+    }
+
+    // Step 5: P2SH evaluation
     if flags.has(ScriptFlags::VERIFY_P2SH) && script_pubkey.is_p2sh() {
         // scriptSig must be push-only for P2SH
         if !is_push_only(script_sig) {
@@ -1128,23 +1177,41 @@ pub fn verify_script(
         }
         let serialized_script = Script::from_bytes(stack_copy.last().unwrap().clone());
 
-        // Evaluate the deserialized script on the stack_copy (minus the last item)
-        let mut p2sh_interp = ScriptInterpreter::new(flags, checker);
-        // Restore the stack from scriptSig evaluation (without last element)
-        for item in &stack_copy[..stack_copy.len() - 1] {
-            p2sh_interp.push(item.clone())?;
-        }
-        p2sh_interp.eval_script(&serialized_script)?;
+        // Check for P2SH-wrapped witness program (BIP141)
+        if flags.has(ScriptFlags::VERIFY_WITNESS) && serialized_script.is_witness_program() {
+            // For P2SH-wrapped witness, scriptSig must be EXACTLY the push of
+            // the witness program (and nothing else)
+            if stack_copy.len() != 1 {
+                return Err(ScriptError::WitnessProgramMismatch);
+            }
 
-        if p2sh_interp.stack.is_empty() {
-            return Err(ScriptError::EvalFalse);
-        }
-        if !stack_is_true(p2sh_interp.stack.last().unwrap()) {
-            return Err(ScriptError::EvalFalse);
+            let version = serialized_script.witness_version().unwrap();
+            let program = serialized_script.witness_program().unwrap();
+            verify_witness_program(witness, version, program, flags, checker)?;
+            had_witness = true;
+        } else {
+            // Standard P2SH evaluation
+            let mut p2sh_interp = ScriptInterpreter::new(flags, checker);
+            for item in &stack_copy[..stack_copy.len() - 1] {
+                p2sh_interp.push(item.clone())?;
+            }
+            p2sh_interp.eval_script(&serialized_script)?;
+
+            if p2sh_interp.stack.is_empty() {
+                return Err(ScriptError::EvalFalse);
+            }
+            if !stack_is_true(p2sh_interp.stack.last().unwrap()) {
+                return Err(ScriptError::EvalFalse);
+            }
         }
     }
 
-    // Step 5: Clean stack check
+    // Step 6: Witness must be empty for non-witness scripts (BIP141)
+    if flags.has(ScriptFlags::VERIFY_WITNESS) && !had_witness && !witness.is_empty() {
+        return Err(ScriptError::WitnessUnexpected);
+    }
+
+    // Step 7: Clean stack check
     if flags.has(ScriptFlags::VERIFY_CLEANSTACK) {
         if interp.stack.len() != 1 {
             return Err(ScriptError::CleanStack);
@@ -1152,6 +1219,225 @@ pub fn verify_script(
     }
 
     Ok(())
+}
+
+/// Verify a witness program (BIP141).
+///
+/// Dispatches to the appropriate verifier based on the witness version:
+/// - v0: P2WPKH (20-byte program) or P2WSH (32-byte program)
+/// - v1+: Future versions succeed if DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM
+///         is not set
+fn verify_witness_program(
+    witness: &Witness,
+    version: u8,
+    program: &[u8],
+    flags: ScriptFlags,
+    checker: &dyn SignatureChecker,
+) -> Result<(), ScriptError> {
+    match version {
+        0 => {
+            if program.len() == 20 {
+                // P2WPKH: witness = [signature, pubkey]
+                if witness.len() != 2 {
+                    return Err(ScriptError::WitnessProgramMismatch);
+                }
+
+                // The pubkey (last witness item) must hash to the program
+                let pubkey = witness.get(1).unwrap();
+                let pubkey_hash = hashing::hash160(pubkey);
+                if pubkey_hash != *program {
+                    return Err(ScriptError::WitnessProgramMismatch);
+                }
+
+                // Construct the implicit P2PKH script:
+                // OP_DUP OP_HASH160 <20-byte-hash> OP_EQUALVERIFY OP_CHECKSIG
+                let script_code = ScriptBuilder::new()
+                    .push_opcode(Opcodes::OP_DUP)
+                    .push_opcode(Opcodes::OP_HASH160)
+                    .push_slice(program)
+                    .push_opcode(Opcodes::OP_EQUALVERIFY)
+                    .push_opcode(Opcodes::OP_CHECKSIG)
+                    .build();
+
+                // Evaluate with witness stack items on the stack
+                let mut interp = ScriptInterpreter::new(flags, checker);
+                for item in witness.iter() {
+                    interp.push(item.to_vec())?;
+                }
+                interp.eval_script(&script_code)?;
+
+                // Must leave exactly one true element
+                if interp.stack.len() != 1 {
+                    return Err(ScriptError::CleanStack);
+                }
+                if !stack_is_true(interp.stack.last().unwrap()) {
+                    return Err(ScriptError::EvalFalse);
+                }
+
+                Ok(())
+            } else if program.len() == 32 {
+                // P2WSH: witness = [stack items..., witnessScript]
+                if witness.is_empty() {
+                    return Err(ScriptError::WitnessProgramMismatch);
+                }
+
+                // Last witness item is the witnessScript
+                let witness_script_bytes = witness.get(witness.len() - 1).unwrap();
+
+                // SHA256 of the witnessScript must match the 32-byte program
+                let script_hash = hashing::sha256(witness_script_bytes);
+                if script_hash.as_bytes() != program {
+                    return Err(ScriptError::WitnessProgramMismatch);
+                }
+
+                let witness_script = Script::from_bytes(witness_script_bytes.to_vec());
+
+                // Script size limit for witness scripts
+                if witness_script.len() > MAX_SCRIPT_SIZE {
+                    return Err(ScriptError::ScriptSize);
+                }
+
+                // Evaluate the witnessScript with the remaining witness items as stack
+                let mut interp = ScriptInterpreter::new(flags, checker);
+                for i in 0..witness.len() - 1 {
+                    interp.push(witness.get(i).unwrap().to_vec())?;
+                }
+                interp.eval_script(&witness_script)?;
+
+                // Must leave exactly one true element
+                if interp.stack.len() != 1 {
+                    return Err(ScriptError::CleanStack);
+                }
+                if !stack_is_true(interp.stack.last().unwrap()) {
+                    return Err(ScriptError::EvalFalse);
+                }
+
+                Ok(())
+            } else {
+                // Witness v0 program must be 20 or 32 bytes
+                Err(ScriptError::WitnessProgramWrongLength)
+            }
+        }
+        1 => {
+            // Taproot (BIP341/BIP342): witness version 1
+            if program.len() != 32 {
+                return Err(ScriptError::WitnessProgramWrongLength);
+            }
+
+            verify_taproot(program, witness, flags, checker)
+        }
+        2..=16 => {
+            // Future witness versions: succeed for forward compatibility
+            // (unless DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM is set,
+            // but we don't enforce that flag yet)
+            Ok(())
+        }
+        _ => Err(ScriptError::WitnessProgramWrongLength),
+    }
+}
+
+/// Verify a Taproot witness program (BIP341/BIP342).
+///
+/// Handles both key-path and script-path spending:
+///
+/// **Key path** (witness = [signature]):
+///   Verify the Schnorr signature directly against the output key (the 32-byte program).
+///
+/// **Script path** (witness = [args..., script, control_block]):
+///   1. Parse control block, extract internal key + merkle proof
+///   2. Verify merkle commitment: output key == tweak(internal key, merkle_root)
+///   3. If leaf version is 0xC0 (tapscript), execute the script with BIP342 rules
+///   4. Other leaf versions are treated as success (future upgradability)
+fn verify_taproot(
+    program: &[u8],
+    witness: &Witness,
+    flags: ScriptFlags,
+    checker: &dyn SignatureChecker,
+) -> Result<(), ScriptError> {
+    use crate::crypto::taproot::{ControlBlock, verify_taproot_commitment, TAPSCRIPT_LEAF_VERSION};
+    use crate::crypto::schnorr::parse_schnorr_signature;
+
+    if witness.is_empty() {
+        return Err(ScriptError::WitnessProgramEmpty);
+    }
+
+    // Check for annex: if the last witness item starts with 0x50, it's an annex
+    // (BIP341 §4.2). We strip it but don't process it (reserved for future use).
+    let stack_size = if witness.len() >= 2 {
+        let last = witness.get(witness.len() - 1).unwrap();
+        if !last.is_empty() && last[0] == 0x50 {
+            witness.len() - 1
+        } else {
+            witness.len()
+        }
+    } else {
+        witness.len()
+    };
+
+    if stack_size == 1 {
+        // KEY PATH SPENDING: witness = [signature] (possibly with annex stripped)
+        let sig_data = witness.get(0).unwrap();
+
+        let (sig_bytes, _hash_type) = parse_schnorr_signature(sig_data)
+            .ok_or(ScriptError::SchnorrSigSize)?;
+
+        // For key-path spending, we need the checker to compute the sighash
+        // and verify against the output key (the 32-byte program itself).
+        let verified = checker.check_schnorr_sig(sig_bytes, program);
+        if !verified {
+            return Err(ScriptError::SchnorrSigVerifyFail);
+        }
+
+        Ok(())
+    } else if stack_size >= 2 {
+        // SCRIPT PATH SPENDING: witness = [args..., script, control_block]
+        let control_data = witness.get(stack_size - 1).unwrap();
+        let script_data = witness.get(stack_size - 2).unwrap();
+
+        let control = ControlBlock::parse(control_data)
+            .ok_or(ScriptError::TaprootWrongControlSize)?;
+
+        // Verify the merkle commitment: output key matches tweak(internal_key, proof)
+        if !verify_taproot_commitment(program, &control, script_data) {
+            return Err(ScriptError::WitnessProgramMismatch);
+        }
+
+        // If leaf version is TAPSCRIPT (0xC0), execute under BIP342 rules
+        if control.leaf_version == TAPSCRIPT_LEAF_VERSION {
+            let tap_script = Script::from_bytes(script_data.to_vec());
+
+            // Script size limit for tapscripts (same as witness scripts)
+            if tap_script.len() > MAX_SCRIPT_SIZE {
+                return Err(ScriptError::ScriptSize);
+            }
+
+            // Execute the tapscript with the remaining witness items as initial stack
+            // (everything except the script and control block)
+            let mut interp = ScriptInterpreter::new(flags, checker);
+            for i in 0..stack_size - 2 {
+                interp.push(witness.get(i).unwrap().to_vec())?;
+            }
+            interp.eval_script(&tap_script)?;
+
+            // Must leave exactly one true element on the stack
+            if interp.stack.is_empty() {
+                return Err(ScriptError::EvalFalse);
+            }
+            if !stack_is_true(interp.stack.last().unwrap()) {
+                return Err(ScriptError::EvalFalse);
+            }
+            if interp.stack.len() != 1 {
+                return Err(ScriptError::CleanStack);
+            }
+
+            Ok(())
+        } else {
+            // Unknown leaf version: succeed for forward compatibility (BIP342)
+            Ok(())
+        }
+    } else {
+        Err(ScriptError::WitnessProgramEmpty)
+    }
 }
 
 /// Check whether a script is push-only (contains only data push opcodes)
@@ -1196,7 +1482,7 @@ mod tests {
 
     #[test]
     fn test_encode_decode_script_num() {
-        for v in [0, 1, -1, 127, -127, 128, -128, 255, -255, 1000, -1000, i32::MAX as i64, i32::MIN as i64] {
+        for v in [0, 1, -1, 127, -127, 128, -128, 255, -255, 1000, -1000, i32::MAX as i64, -(i32::MAX as i64)] {
             let encoded = encode_script_num(v);
             let decoded = decode_script_num(&encoded, MAX_SCRIPT_NUM_LENGTH).unwrap();
             assert_eq!(v, decoded, "roundtrip failed for {}", v);
@@ -1543,5 +1829,229 @@ mod tests {
             Opcodes::OP_WITHIN as u8,
         ]);
         assert!(eval_bool(&script).unwrap());
+    }
+
+    // -- SegWit tests --
+
+    #[test]
+    fn test_verify_script_with_witness_empty() {
+        // Non-witness script should still work through verify_script_with_witness
+        let script_sig = Script::from_bytes(vec![Opcodes::OP_1 as u8]);
+        let script_pubkey = Script::from_bytes(vec![Opcodes::OP_1 as u8, Opcodes::OP_EQUAL as u8]);
+        let checker = NoSigChecker;
+        let result = verify_script_with_witness(
+            &script_sig,
+            &script_pubkey,
+            &Witness::new(),
+            ScriptFlags::new(0),
+            &checker,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_witness_unexpected_for_non_witness_script() {
+        // Non-witness script with non-empty witness should fail when VERIFY_WITNESS is set
+        let script_sig = Script::from_bytes(vec![Opcodes::OP_1 as u8]);
+        let script_pubkey = Script::from_bytes(vec![Opcodes::OP_1 as u8, Opcodes::OP_EQUAL as u8]);
+        let mut witness = Witness::new();
+        witness.push(vec![1, 2, 3]);
+
+        let checker = NoSigChecker;
+        let result = verify_script_with_witness(
+            &script_sig,
+            &script_pubkey,
+            &witness,
+            ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
+            &checker,
+        );
+        assert_eq!(result, Err(ScriptError::WitnessUnexpected));
+    }
+
+    #[test]
+    fn test_p2wpkh_program_detection() {
+        // Build a P2WPKH scriptPubKey: OP_0 <20-byte-hash>
+        let mut script_bytes = vec![0x00, 0x14]; // OP_0, push 20 bytes
+        script_bytes.extend_from_slice(&[0xab; 20]);
+        let script = Script::from_bytes(script_bytes);
+        assert!(script.is_p2wpkh());
+        assert!(script.is_witness_program());
+        assert_eq!(script.witness_version(), Some(0));
+    }
+
+    #[test]
+    fn test_p2wsh_program_detection() {
+        // Build a P2WSH scriptPubKey: OP_0 <32-byte-hash>
+        let mut script_bytes = vec![0x00, 0x20]; // OP_0, push 32 bytes
+        script_bytes.extend_from_slice(&[0xcd; 32]);
+        let script = Script::from_bytes(script_bytes);
+        assert!(script.is_p2wsh());
+        assert!(script.is_witness_program());
+        assert_eq!(script.witness_version(), Some(0));
+    }
+
+    #[test]
+    fn test_p2wpkh_with_mock_checker() {
+        // P2WPKH verification with a mock checker that always succeeds
+        struct AlwaysTrue;
+        impl SignatureChecker for AlwaysTrue {
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
+            fn check_lock_time(&self, _: i64) -> bool { true }
+            fn check_sequence(&self, _: i64) -> bool { true }
+        }
+
+        // Create a "public key" and its hash
+        let pubkey = vec![0x02; 33]; // fake compressed pubkey
+        let pubkey_hash = hashing::hash160(&pubkey);
+
+        // scriptPubKey = OP_0 <20-byte pubkey hash>
+        let mut spk_bytes = vec![0x00, 0x14];
+        spk_bytes.extend_from_slice(&pubkey_hash);
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        // scriptSig = empty (for native SegWit)
+        let script_sig = Script::new();
+
+        // witness = [signature, pubkey]
+        let mut witness = Witness::new();
+        witness.push(vec![0x30; 72]); // fake signature
+        witness.push(pubkey);
+
+        let checker = AlwaysTrue;
+        let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS);
+        let result = verify_script_with_witness(
+            &script_sig, &script_pubkey, &witness, flags, &checker,
+        );
+        assert!(result.is_ok(), "P2WPKH failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_p2wpkh_wrong_pubkey_hash() {
+        struct AlwaysTrue;
+        impl SignatureChecker for AlwaysTrue {
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
+            fn check_lock_time(&self, _: i64) -> bool { true }
+            fn check_sequence(&self, _: i64) -> bool { true }
+        }
+
+        // scriptPubKey with a hash that doesn't match the witness pubkey
+        let mut spk_bytes = vec![0x00, 0x14];
+        spk_bytes.extend_from_slice(&[0xff; 20]); // wrong hash
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        let mut witness = Witness::new();
+        witness.push(vec![0x30; 72]);
+        witness.push(vec![0x02; 33]);
+
+        let result = verify_script_with_witness(
+            &Script::new(), &script_pubkey, &witness,
+            ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
+            &AlwaysTrue,
+        );
+        assert_eq!(result, Err(ScriptError::WitnessProgramMismatch));
+    }
+
+    #[test]
+    fn test_p2wpkh_nonempty_scriptsig_fails() {
+        struct AlwaysTrue;
+        impl SignatureChecker for AlwaysTrue {
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
+            fn check_lock_time(&self, _: i64) -> bool { true }
+            fn check_sequence(&self, _: i64) -> bool { true }
+        }
+
+        let pubkey = vec![0x02; 33];
+        let pubkey_hash = hashing::hash160(&pubkey);
+        let mut spk_bytes = vec![0x00, 0x14];
+        spk_bytes.extend_from_slice(&pubkey_hash);
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        // Non-empty scriptSig is invalid for native witness
+        let script_sig = Script::from_bytes(vec![Opcodes::OP_1 as u8]);
+
+        let mut witness = Witness::new();
+        witness.push(vec![0x30; 72]);
+        witness.push(pubkey);
+
+        let result = verify_script_with_witness(
+            &script_sig, &script_pubkey, &witness,
+            ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
+            &AlwaysTrue,
+        );
+        assert_eq!(result, Err(ScriptError::WitnessProgramMismatch));
+    }
+
+    #[test]
+    fn test_p2wsh_with_mock_checker() {
+        // P2WSH: witness contains stack items + witnessScript
+        struct AlwaysTrue;
+        impl SignatureChecker for AlwaysTrue {
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
+            fn check_lock_time(&self, _: i64) -> bool { true }
+            fn check_sequence(&self, _: i64) -> bool { true }
+        }
+
+        // witnessScript = OP_1 (just pushes true)
+        let witness_script = vec![Opcodes::OP_1 as u8];
+        let script_hash = hashing::sha256(&witness_script);
+
+        // scriptPubKey = OP_0 <32-byte SHA256(witnessScript)>
+        let mut spk_bytes = vec![0x00, 0x20];
+        spk_bytes.extend_from_slice(script_hash.as_bytes());
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        // witness = [witnessScript]
+        let mut witness = Witness::new();
+        witness.push(witness_script);
+
+        let result = verify_script_with_witness(
+            &Script::new(), &script_pubkey, &witness,
+            ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
+            &AlwaysTrue,
+        );
+        assert!(result.is_ok(), "P2WSH failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_p2wsh_wrong_script_hash() {
+        struct AlwaysTrue;
+        impl SignatureChecker for AlwaysTrue {
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
+            fn check_lock_time(&self, _: i64) -> bool { true }
+            fn check_sequence(&self, _: i64) -> bool { true }
+        }
+
+        // scriptPubKey with wrong hash
+        let mut spk_bytes = vec![0x00, 0x20];
+        spk_bytes.extend_from_slice(&[0xff; 32]);
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        let mut witness = Witness::new();
+        witness.push(vec![Opcodes::OP_1 as u8]); // witnessScript
+
+        let result = verify_script_with_witness(
+            &Script::new(), &script_pubkey, &witness,
+            ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
+            &AlwaysTrue,
+        );
+        assert_eq!(result, Err(ScriptError::WitnessProgramMismatch));
+    }
+
+    #[test]
+    fn test_witness_v0_bad_program_length() {
+        // Witness v0 with 15-byte program (not 20 or 32) should fail
+        let mut spk_bytes = vec![0x00, 0x0f]; // OP_0, push 15 bytes
+        spk_bytes.extend_from_slice(&[0xab; 15]);
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        let mut witness = Witness::new();
+        witness.push(vec![1]);
+
+        let result = verify_script_with_witness(
+            &Script::new(), &script_pubkey, &witness,
+            ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
+            &NoSigChecker,
+        );
+        assert_eq!(result, Err(ScriptError::WitnessProgramWrongLength));
     }
 }

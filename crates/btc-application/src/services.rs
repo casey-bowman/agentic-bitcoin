@@ -1,10 +1,18 @@
 //! Application services that orchestrate domain logic through ports
 //!
 //! Services implement use cases by coordinating the domain layer with adapters.
+//!
+//! This module implements the core application use cases:
+//! - Block validation with full script verification (including SegWit/BIP143)
+//! - Transaction validation for mempool acceptance
+//! - Mempool management
+//! - Mining block template generation
 
 use btc_domain::consensus::rules;
 use btc_domain::consensus::ConsensusParams;
+use btc_domain::crypto::signing::TransactionSignatureChecker;
 use btc_domain::primitives::{Block, BlockHash, Transaction};
+use btc_domain::script::{ScriptFlags, verify_script_with_witness};
 use btc_ports::{BlockStore, ChainStateStore, MempoolPort, BlockTemplateProvider, PeerManager, UtxoEntry};
 use std::sync::Arc;
 
@@ -64,6 +72,53 @@ impl BlockchainService {
             .await
             .map_err(|e| e.to_string())?;
         let new_height = current_height + 1;
+
+        // Standard script verification flags (P2SH + SegWit + strictness)
+        let script_flags = ScriptFlags::standard();
+
+        // Verify scripts for all non-coinbase transaction inputs
+        // This performs full ECDSA/SegWit signature verification against the UTXO set.
+        for tx in block.transactions.iter() {
+            if tx.is_coinbase() {
+                continue;
+            }
+
+            for (input_idx, input) in tx.inputs.iter().enumerate() {
+                // Look up the UTXO being spent
+                let utxo = self.chain_state
+                    .get_utxo(&input.previous_output.txid, input.previous_output.vout)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!(
+                        "Missing UTXO for input {}:{} in tx {}",
+                        input.previous_output.txid, input.previous_output.vout, tx.txid()
+                    ))?;
+
+                let script_pubkey = &utxo.output.script_pubkey;
+                let spent_amount = utxo.output.value;
+
+                // Choose the right signature checker:
+                // - If the output is a witness program (P2WPKH, P2WSH) or P2SH-wrapped witness,
+                //   use BIP143 sighash (new_witness_v0)
+                // - Otherwise use legacy sighash
+                let checker = if script_pubkey.is_witness_program() || Self::is_p2sh_witness(tx, input_idx) {
+                    TransactionSignatureChecker::new_witness_v0(tx, input_idx, spent_amount)
+                } else {
+                    TransactionSignatureChecker::new(tx, input_idx, spent_amount)
+                };
+
+                verify_script_with_witness(
+                    &input.script_sig,
+                    script_pubkey,
+                    &input.witness,
+                    script_flags,
+                    &checker,
+                ).map_err(|e| format!(
+                    "Script verification failed for input {} of tx {}: {:?}",
+                    input_idx, tx.txid(), e
+                ))?;
+            }
+        }
 
         // Update UTXO set: process each transaction
         let mut utxo_adds = Vec::new();
@@ -178,6 +233,38 @@ impl BlockchainService {
         }
 
         let fee = total_input_value - total_output_value;
+
+        // Verify scripts for all inputs (full signature + SegWit verification)
+        let script_flags = ScriptFlags::standard();
+
+        for (input_idx, input) in tx.inputs.iter().enumerate() {
+            let utxo = self.chain_state
+                .get_utxo(&input.previous_output.txid, input.previous_output.vout)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "UTXO disappeared during script verification".to_string())?;
+
+            let script_pubkey = &utxo.output.script_pubkey;
+            let spent_amount = utxo.output.value;
+
+            let checker = if script_pubkey.is_witness_program() || Self::is_p2sh_witness(tx, input_idx) {
+                TransactionSignatureChecker::new_witness_v0(tx, input_idx, spent_amount)
+            } else {
+                TransactionSignatureChecker::new(tx, input_idx, spent_amount)
+            };
+
+            verify_script_with_witness(
+                &input.script_sig,
+                script_pubkey,
+                &input.witness,
+                script_flags,
+                &checker,
+            ).map_err(|e| format!(
+                "Script verification failed for input {} of tx {}: {:?}",
+                input_idx, txid, e
+            ))?;
+        }
+
         tracing::debug!(
             "Transaction {} validated (fee: {} satoshis)",
             txid,
@@ -185,6 +272,48 @@ impl BlockchainService {
         );
 
         Ok(())
+    }
+
+    /// Detect if a transaction input is a P2SH-wrapped witness program.
+    ///
+    /// P2SH-P2WPKH and P2SH-P2WSH have a scriptSig that contains a single push
+    /// of the witness program. We detect this by checking if the scriptSig's last
+    /// data push is a valid witness program (version byte 0x00-0x10, followed by
+    /// 20 or 32 byte program).
+    fn is_p2sh_witness(tx: &Transaction, input_idx: usize) -> bool {
+        let script_sig = &tx.inputs[input_idx].script_sig;
+        let bytes = script_sig.as_bytes();
+
+        // A P2SH-wrapped witness scriptSig is a single push of a witness program.
+        // Minimal witness programs are 22 bytes (P2WPKH: 0x0014{20}) or 34 bytes (P2WSH: 0x0020{32}).
+        // The scriptSig would be: push_opcode + witness_program
+        if bytes.is_empty() {
+            return false;
+        }
+
+        // Try to interpret the scriptSig as a single push of a witness program
+        // P2SH-P2WPKH scriptSig: 0x16 0x0014{20-byte-hash} (23 bytes total)
+        // P2SH-P2WSH scriptSig:  0x22 0x0020{32-byte-hash} (35 bytes total)
+        let inner = if bytes.len() == 23 && bytes[0] == 0x16 {
+            &bytes[1..]
+        } else if bytes.len() == 35 && bytes[0] == 0x22 {
+            &bytes[1..]
+        } else {
+            return false;
+        };
+
+        // Check if the inner data is a valid witness program
+        // Version byte: 0x00 (OP_0) or 0x51-0x60 (OP_1..OP_16)
+        // Followed by a push of 20 or 32 bytes
+        if inner.len() >= 2 {
+            let version_byte = inner[0];
+            let push_len = inner[1] as usize;
+            let is_valid_version = version_byte == 0x00 || (version_byte >= 0x51 && version_byte <= 0x60);
+            let is_valid_program = (push_len == 20 || push_len == 32) && inner.len() == 2 + push_len;
+            return is_valid_version && is_valid_program;
+        }
+
+        false
     }
 
     /// Get current chain information

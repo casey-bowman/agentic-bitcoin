@@ -223,7 +223,7 @@ impl ConsensusParams {
         if halving >= 64 {
             return 0;
         }
-        50_000_000_000 >> halving
+        5_000_000_000 >> halving
     }
 
     /// Check if feature is enabled at height

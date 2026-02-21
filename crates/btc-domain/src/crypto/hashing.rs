@@ -1,8 +1,9 @@
 //! Cryptographic hashing functions
 //!
-//! Double-SHA256, SHA256, and RIPEMD-160 hashing used throughout Bitcoin.
+//! Double-SHA256, SHA256, SHA-1, and RIPEMD-160 hashing used throughout Bitcoin.
 
 use crate::primitives::hash::Hash256;
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 
 /// Compute double-SHA256 hash (hash256)
@@ -53,6 +54,21 @@ pub fn hash160(data: &[u8]) -> [u8; 20] {
     bytes
 }
 
+/// Compute SHA-1 hash (OP_SHA1)
+///
+/// Returns a 20-byte SHA-1 digest. Used by the OP_SHA1 opcode in Bitcoin Script.
+/// While SHA-1 is considered cryptographically weak for collision resistance,
+/// it remains a valid opcode that must be supported for consensus compatibility.
+pub fn sha1(data: &[u8]) -> [u8; 20] {
+    let mut hasher = Sha1::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+
+    let mut bytes = [0u8; 20];
+    bytes.copy_from_slice(&result);
+    bytes
+}
+
 /// Hash a signature for signing
 pub fn hash_sig(data: &[u8]) -> Hash256 {
     hash256(data)
@@ -87,6 +103,19 @@ mod tests {
         
         // Verify it produces a 20-byte result
         assert_eq!(hash.len(), 20);
+    }
+
+    #[test]
+    fn test_sha1() {
+        let data = b"hello";
+        let hash = sha1(data);
+
+        // Verify it produces a 20-byte result
+        assert_eq!(hash.len(), 20);
+
+        // Known SHA-1 of "hello": aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d
+        let expected = hex::decode("aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d").unwrap();
+        assert_eq!(hash.to_vec(), expected);
     }
 
     #[test]

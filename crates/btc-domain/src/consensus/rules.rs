@@ -251,7 +251,8 @@ fn hash_to_u128(bytes: &[u8; 32]) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::{OutPoint, Script, TxIn, TxOut, Txid};
+    use crate::primitives::{OutPoint, TxIn, TxOut, Txid, Amount};
+    use crate::Script;
 
     #[test]
     fn test_empty_inputs() {
