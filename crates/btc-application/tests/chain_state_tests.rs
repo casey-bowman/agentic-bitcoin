@@ -10,6 +10,7 @@ use btc_domain::primitives::hash::{BlockHash, Hash256};
 use btc_domain::primitives::{Amount, OutPoint, Transaction, TxIn, TxOut, Txid};
 use btc_domain::script::Script;
 use btc_domain::script::witness::Witness;
+use btc_ports::ChainStateStore;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -532,4 +533,215 @@ fn test_deep_reorg() {
     assert_eq!(cs.tip_height(), 6);
     // genesis + 6 B-chain coinbases = 7 UTXOs
     assert_eq!(cs.utxo_count(), 7);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// UTXO tracking edge cases
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_utxo_exists_after_block_connection() {
+    let params = regtest_params();
+    let genesis = make_genesis();
+    let genesis_hash = genesis.block_hash();
+
+    let mut cs = ChainState::new(genesis, params).unwrap();
+    cs.set_verify_scripts(false);
+
+    // Connect block 1
+    let block1 = make_block(genesis_hash, 1, SUBSIDY, 1231006506);
+    let _block1_hash = block1.block_hash();
+    let coinbase_txid = block1.transactions[0].txid();
+    cs.process_block(block1).unwrap();
+
+    // The coinbase UTXO from block 1 should exist
+    let outpoint = OutPoint::new(coinbase_txid, 0);
+    assert!(cs.has_utxo(&outpoint), "Block 1 coinbase UTXO should exist");
+}
+
+#[test]
+fn test_utxo_removed_after_spend() {
+    let params = regtest_params();
+    let genesis = make_genesis();
+    let genesis_hash = genesis.block_hash();
+
+    let mut cs = ChainState::new(genesis, params).unwrap();
+    cs.set_verify_scripts(false);
+
+    // Mine 100 blocks to mature the genesis coinbase
+    let mut prev = genesis_hash;
+    for h in 1..=100 {
+        let block = make_block(prev, h, SUBSIDY, 1231006505 + h);
+        prev = block.block_hash();
+        cs.process_block(block).unwrap();
+    }
+
+    // Grab the genesis coinbase outpoint
+    let genesis_block = cs.get_block(&genesis_hash).unwrap();
+    let genesis_txid = genesis_block.transactions[0].txid();
+    let genesis_outpoint = OutPoint::new(genesis_txid, 0);
+
+    // Genesis coinbase should exist (now mature)
+    assert!(cs.has_utxo(&genesis_outpoint));
+
+    // Spend it in block 101
+    let spend_tx = make_simple_spend(genesis_outpoint.clone(), SUBSIDY - 1000);
+    let block101 = make_block_with_spend(prev, 101, SUBSIDY, spend_tx, 1000, 1231006606);
+    cs.process_block(block101).unwrap();
+
+    // Genesis coinbase UTXO should now be spent (removed)
+    assert!(!cs.has_utxo(&genesis_outpoint), "Spent UTXO should be removed");
+}
+
+#[test]
+fn test_utxo_restored_after_reorg_disconnects_spend() {
+    let params = regtest_params();
+    let genesis = make_genesis();
+    let genesis_hash = genesis.block_hash();
+
+    let mut cs = ChainState::new(genesis, params).unwrap();
+    cs.set_verify_scripts(false);
+
+    // Mine 100 blocks to mature genesis coinbase
+    let mut prev_a = genesis_hash;
+    for h in 1..=100 {
+        let block = make_block(prev_a, h, SUBSIDY, 1231006505 + h);
+        prev_a = block.block_hash();
+        cs.process_block(block).unwrap();
+    }
+
+    // Spend genesis coinbase in block 101 on chain A
+    let genesis_block = cs.get_block(&genesis_hash).unwrap();
+    let genesis_txid = genesis_block.transactions[0].txid();
+    let genesis_outpoint = OutPoint::new(genesis_txid, 0);
+
+    let spend_tx = make_simple_spend(genesis_outpoint.clone(), SUBSIDY - 1000);
+    let block_a101 = make_block_with_spend(prev_a, 101, SUBSIDY, spend_tx, 1000, 1231006606);
+    cs.process_block(block_a101).unwrap();
+
+    // Genesis coinbase is spent on chain A
+    assert!(!cs.has_utxo(&genesis_outpoint));
+
+    // Now build chain B from block 100 (skipping the spend), with 3 blocks to overtake
+    // Chain B: block100_hash → B101 → B102 → B103
+    // We need the hash at height 100 to fork from
+    let fork_hash = cs.get_block_hash_at_height(100).unwrap();
+
+    let b101 = make_block(fork_hash, 101, SUBSIDY, 1231009001);
+    let b101_hash = b101.block_hash();
+    cs.process_block(b101).unwrap();
+
+    let b102 = make_block(b101_hash, 102, SUBSIDY, 1231009002);
+    let b102_hash = b102.block_hash();
+    cs.process_block(b102).unwrap();
+
+    // B102 should trigger reorg (chain B has height 102 > chain A's 101)
+    assert_eq!(cs.tip(), b102_hash);
+
+    // After reorg, genesis coinbase should be restored (B chain doesn't spend it)
+    assert!(
+        cs.has_utxo(&genesis_outpoint),
+        "Genesis UTXO should be restored after reorg disconnects the spend"
+    );
+}
+
+#[test]
+fn test_multiple_spends_in_same_block() {
+    let params = regtest_params();
+    let genesis = make_genesis();
+    let genesis_hash = genesis.block_hash();
+
+    let mut cs = ChainState::new(genesis, params).unwrap();
+    cs.set_verify_scripts(false);
+
+    // Mine 2 blocks (gives us 3 coinbase UTXOs: genesis + block1 + block2)
+    let block1 = make_block(genesis_hash, 1, SUBSIDY, 1231006506);
+    let block1_hash = block1.block_hash();
+    let block1_coinbase_txid = block1.transactions[0].txid();
+    cs.process_block(block1).unwrap();
+
+    let block2 = make_block(block1_hash, 2, SUBSIDY, 1231006507);
+    let prev = block2.block_hash();
+    cs.process_block(block2).unwrap();
+
+    // Mine 98 more blocks to mature block 1 coinbase
+    let mut prev_hash = prev;
+    for h in 3..=100 {
+        let block = make_block(prev_hash, h, SUBSIDY, 1231006505 + h);
+        prev_hash = block.block_hash();
+        cs.process_block(block).unwrap();
+    }
+
+    assert_eq!(cs.tip_height(), 100);
+    assert_eq!(cs.utxo_count(), 101); // genesis + 100 blocks
+
+    // Spend block1's coinbase in block 101
+    let spend_outpoint = OutPoint::new(block1_coinbase_txid, 0);
+    let spend_tx = make_simple_spend(spend_outpoint, SUBSIDY - 500);
+    let block101 = make_block_with_spend(prev_hash, 101, SUBSIDY, spend_tx, 500, 1231006606);
+    cs.process_block(block101).unwrap();
+
+    // 101 original + 1 coinbase(101) + 1 spend_output - 1 spent = 102
+    assert_eq!(cs.utxo_count(), 102);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Store persistence
+// ═══════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_flush_block_delta_to_store() {
+    use btc_adapters::storage::InMemoryChainStateStore;
+
+    let params = regtest_params();
+    let genesis = make_genesis();
+    let genesis_hash = genesis.block_hash();
+
+    let mut cs = ChainState::new(genesis, params).unwrap();
+    cs.set_verify_scripts(false);
+
+    let block1 = make_block(genesis_hash, 1, SUBSIDY, 1231006506);
+    let block1_hash = block1.block_hash();
+    cs.process_block(block1).unwrap();
+
+    // Flush to store
+    let store = InMemoryChainStateStore::new();
+    cs.flush_to_store(&store).await.unwrap();
+
+    let (tip, height) = store.get_best_chain_tip().await.unwrap();
+    assert_eq!(tip, block1_hash);
+    assert_eq!(height, 1);
+}
+
+#[tokio::test]
+async fn test_flush_after_reorg() {
+    use btc_adapters::storage::InMemoryChainStateStore;
+
+    let params = regtest_params();
+    let genesis = make_genesis();
+    let genesis_hash = genesis.block_hash();
+
+    let mut cs = ChainState::new(genesis, params).unwrap();
+    cs.set_verify_scripts(false);
+
+    // Chain A: 1 block
+    let a1 = make_block(genesis_hash, 1, SUBSIDY, 1231006506);
+    cs.process_block(a1).unwrap();
+
+    // Chain B: 2 blocks → reorg
+    let b1 = make_block(genesis_hash, 1, SUBSIDY, 1231009001);
+    let b1_hash = b1.block_hash();
+    cs.process_block(b1).unwrap();
+
+    let b2 = make_block(b1_hash, 2, SUBSIDY, 1231009002);
+    let b2_hash = b2.block_hash();
+    cs.process_block(b2).unwrap();
+
+    // Flush after reorg
+    let store = InMemoryChainStateStore::new();
+    cs.flush_to_store(&store).await.unwrap();
+
+    let (tip, height) = store.get_best_chain_tip().await.unwrap();
+    assert_eq!(tip, b2_hash);
+    assert_eq!(height, 2);
 }

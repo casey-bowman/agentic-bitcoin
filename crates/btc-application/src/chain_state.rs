@@ -17,10 +17,10 @@
 
 use crate::block_index::{BlockIndex, BlockIndexError, BlockValidationStatus};
 use btc_domain::consensus::connect::{
-    connect_block, disconnect_block, BlockConnectResult, ConnectBlockError, MemoryUtxoSet,
+    connect_block, disconnect_block, BlockConnectResult, ConnectBlockError, MemoryUtxoSet, UtxoView,
 };
 use btc_domain::consensus::ConsensusParams;
-use btc_domain::primitives::{Block, BlockHash};
+use btc_domain::primitives::{Block, BlockHash, OutPoint};
 use btc_ports::{ChainStateStore, UtxoEntry};
 
 use std::collections::HashMap;
@@ -394,6 +394,11 @@ impl ChainState {
     /// Number of UTXOs in the active set.
     pub fn utxo_count(&self) -> usize {
         self.utxo_set.len()
+    }
+
+    /// Check if a specific UTXO exists in the active set.
+    pub fn has_utxo(&self, outpoint: &OutPoint) -> bool {
+        self.utxo_set.get_utxo(outpoint).is_some()
     }
 
     /// Get the block hash at a given height on the active chain.

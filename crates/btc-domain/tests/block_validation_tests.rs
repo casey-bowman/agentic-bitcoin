@@ -452,6 +452,7 @@ fn test_connect_block_with_real_p2pkh_scripts() {
             amount: Amount::from_sat(100_000),
             signing_key: Some(key),
             sequence: 0xFFFFFFFF,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51])))
         .sign()
@@ -493,6 +494,7 @@ fn test_connect_block_with_real_p2wpkh_scripts() {
             amount: Amount::from_sat(200_000),
             signing_key: Some(key),
             sequence: 0xFFFFFFFE,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(190_000), Script::from_bytes(vec![0x51])))
         .sign()
@@ -534,6 +536,7 @@ fn test_connect_block_bad_signature_rejected() {
             amount: Amount::from_sat(100_000),
             signing_key: Some(wrong_key),
             sequence: 0xFFFFFFFF,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51])))
         .sign()

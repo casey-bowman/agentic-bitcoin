@@ -10,9 +10,9 @@ pub mod taproot;
 
 pub use hashing::{hash160, hash256, hash_sig, sha1, sha256};
 pub use schnorr::{verify_schnorr, parse_schnorr_signature};
-pub use signing::{TransactionSignatureChecker, verify_ecdsa};
+pub use signing::{TransactionSignatureChecker, SpentOutput, verify_ecdsa};
 pub use taproot::{
-    ControlBlock, tagged_hash, tapleaf_hash, tapbranch_hash,
+    ControlBlock, TapTree, TapLeaf, tagged_hash, tapleaf_hash, tapbranch_hash,
     taptweak_hash, verify_taproot_commitment, taproot_sighash,
     TAPSCRIPT_LEAF_VERSION,
 };

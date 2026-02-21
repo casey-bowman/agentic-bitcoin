@@ -241,6 +241,7 @@ impl WalletPort for InMemoryWallet {
                 amount: utxo.output.value,
                 signing_key: wallet_key.map(|wk| wk.private_key),
                 sequence: 0xFFFFFFFE, // RBF-compatible
+                tap_script_path: None,
             });
         }
 
@@ -281,6 +282,7 @@ impl WalletPort for InMemoryWallet {
                 amount: utxo.output.value,
                 signing_key: wallet_key.map(|wk| wk.private_key),
                 sequence: input.sequence,
+                tap_script_path: None,
             });
         }
 
@@ -330,6 +332,14 @@ impl WalletPort for InMemoryWallet {
                 .map_err(|e| format!("address derivation failed: {}", e))?,
             AddressType::P2shP2wpkh => Address::p2sh_p2wpkh(&pubkey, self.mainnet)
                 .map_err(|e| format!("address derivation failed: {}", e))?,
+            AddressType::P2TR => {
+                // Derive x-only internal key from the compressed pubkey
+                let serialized = pubkey.serialize();
+                let mut x_only = [0u8; 32];
+                x_only.copy_from_slice(&serialized[1..33]);
+                Address::p2tr_from_internal_key(&x_only, self.mainnet)
+                    .map_err(|e| format!("address derivation failed: {}", e))?
+            }
         };
 
         let addr_string = address.encoded.clone();
@@ -353,6 +363,7 @@ impl WalletPort for InMemoryWallet {
                 AddressType::P2PKH => "P2PKH",
                 AddressType::P2WPKH => "P2WPKH",
                 AddressType::P2shP2wpkh => "P2SH-P2WPKH",
+                AddressType::P2TR => "P2TR",
             },
             addr_string
         );
@@ -378,6 +389,13 @@ impl WalletPort for InMemoryWallet {
                 .map_err(|e| format!("address derivation failed: {}", e))?,
             AddressType::P2shP2wpkh => Address::p2sh_p2wpkh(&pubkey, self.mainnet)
                 .map_err(|e| format!("address derivation failed: {}", e))?,
+            AddressType::P2TR => {
+                let serialized = pubkey.serialize();
+                let mut x_only = [0u8; 32];
+                x_only.copy_from_slice(&serialized[1..33]);
+                Address::p2tr_from_internal_key(&x_only, self.mainnet)
+                    .map_err(|e| format!("address derivation failed: {}", e))?
+            }
         };
 
         let addr_string = address.encoded.clone();

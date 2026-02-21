@@ -16,6 +16,8 @@ pub enum AddressType {
     P2WPKH,
     /// Wrapped SegWit Pay-to-Script-Hash(Pay-to-Witness-PKH) (3...)
     P2shP2wpkh,
+    /// Taproot Pay-to-Taproot (bc1p...)
+    P2TR,
 }
 
 /// A Bitcoin address (string encoding + metadata)
@@ -178,9 +180,70 @@ impl Address {
         })
     }
 
+    /// Derive a P2TR (Taproot) address from an x-only output public key.
+    ///
+    /// The output key is typically computed as:
+    ///   output_key = internal_key + tagged_hash("TapTweak", internal_key [|| merkle_root]) * G
+    ///
+    /// For key-path-only outputs (no scripts), the merkle_root is omitted.
+    ///
+    /// Format: Bech32m( hrp, witness_version=1, output_key )
+    /// Mainnet: starts with 'bc1p', Testnet: starts with 'tb1p'
+    ///
+    /// # Arguments
+    /// * `output_key` - 32-byte x-only public key (the tweaked output key)
+    /// * `mainnet` - Whether this is a mainnet address
+    pub fn p2tr(output_key: &[u8; 32], mainnet: bool) -> Self {
+        let hrp = if mainnet { "bc" } else { "tb" };
+
+        let encoded = bech32m_encode(hrp, 1, output_key);
+
+        // Build scriptPubKey: OP_1 <32-byte output key>
+        let mut spk_bytes = Vec::with_capacity(34);
+        spk_bytes.push(0x51); // OP_1
+        spk_bytes.push(32);   // push 32 bytes
+        spk_bytes.extend_from_slice(output_key);
+        let script_pubkey = Script::from_bytes(spk_bytes);
+
+        Address {
+            encoded,
+            address_type: AddressType::P2TR,
+            mainnet,
+            script_pubkey,
+        }
+    }
+
+    /// Derive a P2TR address from an internal key (convenience wrapper).
+    ///
+    /// Computes the output key by tweaking the internal key with no script tree
+    /// (key-path-only), then creates the address.
+    ///
+    /// # Arguments
+    /// * `internal_key` - 32-byte x-only internal public key
+    /// * `mainnet` - Whether this is a mainnet address
+    pub fn p2tr_from_internal_key(internal_key: &[u8; 32], mainnet: bool) -> Result<Self, AddressError> {
+        use secp256k1::{Secp256k1, XOnlyPublicKey, Scalar};
+
+        let secp = Secp256k1::verification_only();
+
+        let pk = XOnlyPublicKey::from_slice(internal_key)
+            .map_err(|e| AddressError::InvalidFormat(format!("invalid internal key: {}", e)))?;
+
+        // Tweak: t = tagged_hash("TapTweak", internal_key)  (no merkle root)
+        let tweak = crate::crypto::taproot::taptweak_hash(internal_key, None);
+        let scalar = Scalar::from_be_bytes(tweak)
+            .map_err(|_| AddressError::InvalidFormat("tweak overflow".into()))?;
+
+        let (output_key, _parity) = pk.add_tweak(&secp, &scalar)
+            .map_err(|e| AddressError::InvalidFormat(format!("tweak failed: {}", e)))?;
+
+        Ok(Self::p2tr(&output_key.serialize(), mainnet))
+    }
+
     /// Decode a Bitcoin address string back into its script pubkey.
     ///
-    /// Supports P2PKH (1.../m.../n...), P2SH (3.../2...), and P2WPKH (bc1q.../tb1q...).
+    /// Supports P2PKH (1.../m.../n...), P2SH (3.../2...), P2WPKH (bc1q.../tb1q...),
+    /// and P2TR (bc1p.../tb1p...).
     pub fn decode(address: &str) -> Result<Self, AddressError> {
         // Try bech32 first
         if address.starts_with("bc1") || address.starts_with("tb1") {
@@ -274,29 +337,69 @@ impl Address {
     }
 
     fn decode_bech32(address: &str) -> Result<Self, AddressError> {
-        let (hrp, version, program) = bech32_decode(address)?;
+        let (hrp, version, program, encoding) = bech32_decode_versioned(address)?;
 
         let mainnet = hrp == "bc";
 
-        if version == 0 && program.len() == 20 {
-            // P2WPKH
-            let mut spk_bytes = Vec::with_capacity(22);
-            spk_bytes.push(0x00); // OP_0
-            spk_bytes.push(20);
-            spk_bytes.extend_from_slice(&program);
+        // BIP350: witness v0 uses bech32, witness v1+ uses bech32m
+        match version {
+            0 => {
+                if encoding != Bech32Encoding::Bech32 {
+                    return Err(AddressError::InvalidBech32(
+                        "witness v0 must use bech32 (not bech32m)".into(),
+                    ));
+                }
+                if program.len() == 20 {
+                    // P2WPKH
+                    let mut spk_bytes = Vec::with_capacity(22);
+                    spk_bytes.push(0x00); // OP_0
+                    spk_bytes.push(20);
+                    spk_bytes.extend_from_slice(&program);
 
-            Ok(Address {
-                encoded: address.to_string(),
-                address_type: AddressType::P2WPKH,
-                mainnet,
-                script_pubkey: Script::from_bytes(spk_bytes),
-            })
-        } else {
-            Err(AddressError::InvalidFormat(format!(
+                    Ok(Address {
+                        encoded: address.to_string(),
+                        address_type: AddressType::P2WPKH,
+                        mainnet,
+                        script_pubkey: Script::from_bytes(spk_bytes),
+                    })
+                } else {
+                    Err(AddressError::InvalidFormat(format!(
+                        "unsupported v0 program length {}",
+                        program.len()
+                    )))
+                }
+            }
+            1 => {
+                if encoding != Bech32Encoding::Bech32m {
+                    return Err(AddressError::InvalidBech32(
+                        "witness v1+ must use bech32m (not bech32)".into(),
+                    ));
+                }
+                if program.len() == 32 {
+                    // P2TR
+                    let mut spk_bytes = Vec::with_capacity(34);
+                    spk_bytes.push(0x51); // OP_1
+                    spk_bytes.push(32);
+                    spk_bytes.extend_from_slice(&program);
+
+                    Ok(Address {
+                        encoded: address.to_string(),
+                        address_type: AddressType::P2TR,
+                        mainnet,
+                        script_pubkey: Script::from_bytes(spk_bytes),
+                    })
+                } else {
+                    Err(AddressError::InvalidFormat(format!(
+                        "unsupported v1 program length {}",
+                        program.len()
+                    )))
+                }
+            }
+            _ => Err(AddressError::InvalidFormat(format!(
                 "unsupported witness version {} with program length {}",
                 version,
                 program.len()
-            )))
+            ))),
         }
     }
 }
@@ -338,18 +441,47 @@ fn bech32_hrp_expand(hrp: &str) -> Vec<u8> {
     result
 }
 
+/// Bech32 vs Bech32m encoding variant (BIP350).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bech32Encoding {
+    /// Original bech32 (BIP173) — for witness v0
+    Bech32,
+    /// Bech32m (BIP350) — for witness v1+
+    Bech32m,
+}
+
+/// Bech32m constant (BIP350): replaces the `1` used in bech32.
+const BECH32M_CONST: u32 = 0x2bc830a3;
+
 fn bech32_create_checksum(hrp: &str, data: &[u8]) -> Vec<u8> {
+    bech32_create_checksum_with(hrp, data, Bech32Encoding::Bech32)
+}
+
+fn bech32_create_checksum_with(hrp: &str, data: &[u8], encoding: Bech32Encoding) -> Vec<u8> {
     let mut values = bech32_hrp_expand(hrp);
     values.extend_from_slice(data);
     values.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
-    let polymod = bech32_polymod(&values) ^ 1;
+    let constant = match encoding {
+        Bech32Encoding::Bech32 => 1,
+        Bech32Encoding::Bech32m => BECH32M_CONST,
+    };
+    let polymod = bech32_polymod(&values) ^ constant;
     (0..6).map(|i| ((polymod >> (5 * (5 - i))) & 31) as u8).collect()
 }
 
-fn bech32_verify_checksum(hrp: &str, data: &[u8]) -> bool {
+// Old bech32-only checksum removed; use bech32_verify_checksum_encoding instead.
+
+fn bech32_verify_checksum_encoding(hrp: &str, data: &[u8]) -> Option<Bech32Encoding> {
     let mut values = bech32_hrp_expand(hrp);
     values.extend_from_slice(data);
-    bech32_polymod(&values) == 1
+    let residue = bech32_polymod(&values);
+    if residue == 1 {
+        Some(Bech32Encoding::Bech32)
+    } else if residue == BECH32M_CONST {
+        Some(Bech32Encoding::Bech32m)
+    } else {
+        None
+    }
 }
 
 /// Convert 8-bit data to 5-bit groups (for bech32)
@@ -409,8 +541,25 @@ fn bech32_encode(hrp: &str, witness_version: u8, program: &[u8]) -> String {
     result
 }
 
-/// Decode a bech32 address → (hrp, witness_version, program)
-fn bech32_decode(address: &str) -> Result<(String, u8, Vec<u8>), AddressError> {
+/// Encode a witness program as a bech32m address (BIP350, for witness v1+).
+fn bech32m_encode(hrp: &str, witness_version: u8, program: &[u8]) -> String {
+    let mut data = vec![witness_version];
+    data.extend_from_slice(&convert_bits_8_to_5(program));
+
+    let checksum = bech32_create_checksum_with(hrp, &data, Bech32Encoding::Bech32m);
+    data.extend_from_slice(&checksum);
+
+    let mut result = String::from(hrp);
+    result.push('1'); // separator
+    for &d in &data {
+        result.push(BECH32_CHARSET[d as usize] as char);
+    }
+
+    result
+}
+
+/// Decode a bech32/bech32m address → (hrp, witness_version, program, encoding)
+fn bech32_decode_versioned(address: &str) -> Result<(String, u8, Vec<u8>, Bech32Encoding), AddressError> {
     let lower = address.to_lowercase();
 
     let sep = lower
@@ -437,9 +586,8 @@ fn bech32_decode(address: &str) -> Result<(String, u8, Vec<u8>), AddressError> {
         data.push(pos as u8);
     }
 
-    if !bech32_verify_checksum(hrp, &data) {
-        return Err(AddressError::InvalidBech32("checksum failed".into()));
-    }
+    let encoding = bech32_verify_checksum_encoding(hrp, &data)
+        .ok_or_else(|| AddressError::InvalidBech32("checksum failed".into()))?;
 
     // Remove checksum (last 6 bytes)
     let data = &data[..data.len() - 6];
@@ -451,8 +599,10 @@ fn bech32_decode(address: &str) -> Result<(String, u8, Vec<u8>), AddressError> {
     let witness_version = data[0];
     let program = convert_bits_5_to_8(&data[1..]);
 
-    Ok((hrp.to_string(), witness_version, program))
+    Ok((hrp.to_string(), witness_version, program, encoding))
 }
+
+// Old bech32_decode removed; use bech32_decode_versioned instead.
 
 #[cfg(test)]
 mod tests {
@@ -552,9 +702,106 @@ mod tests {
         let encoded = bech32_encode("bc", 0, &program);
         assert!(encoded.starts_with("bc1q"));
 
-        let (hrp, version, decoded_program) = bech32_decode(&encoded).unwrap();
+        let (hrp, version, decoded_program, encoding) = bech32_decode_versioned(&encoded).unwrap();
         assert_eq!(hrp, "bc");
         assert_eq!(version, 0);
         assert_eq!(decoded_program, program);
+        assert!(matches!(encoding, Bech32Encoding::Bech32));
+    }
+
+    // ── P2TR (Taproot) address tests ───────────────────────────────
+
+    #[test]
+    fn test_p2tr_mainnet() {
+        // Use a known 32-byte x-only output key
+        let output_key = [0x42; 32];
+        let addr = Address::p2tr(&output_key, true);
+
+        assert!(addr.encoded.starts_with("bc1p"));
+        assert_eq!(addr.address_type, AddressType::P2TR);
+        assert!(addr.mainnet);
+        assert!(addr.script_pubkey.is_p2tr());
+        assert_eq!(addr.script_pubkey.as_bytes().len(), 34);
+        assert_eq!(addr.script_pubkey.as_bytes()[0], 0x51); // OP_1
+        assert_eq!(addr.script_pubkey.as_bytes()[1], 32);   // push 32
+        assert_eq!(&addr.script_pubkey.as_bytes()[2..], &output_key);
+    }
+
+    #[test]
+    fn test_p2tr_testnet() {
+        let output_key = [0x42; 32];
+        let addr = Address::p2tr(&output_key, false);
+
+        assert!(addr.encoded.starts_with("tb1p"));
+        assert_eq!(addr.address_type, AddressType::P2TR);
+        assert!(!addr.mainnet);
+    }
+
+    #[test]
+    fn test_p2tr_decode_roundtrip() {
+        let output_key = [0x42; 32];
+        let addr = Address::p2tr(&output_key, true);
+
+        let decoded = Address::decode(&addr.encoded).unwrap();
+        assert_eq!(decoded.address_type, AddressType::P2TR);
+        assert_eq!(decoded.script_pubkey.as_bytes(), addr.script_pubkey.as_bytes());
+        assert!(decoded.mainnet);
+    }
+
+    #[test]
+    fn test_p2tr_decode_testnet_roundtrip() {
+        let output_key = [0x42; 32];
+        let addr = Address::p2tr(&output_key, false);
+
+        let decoded = Address::decode(&addr.encoded).unwrap();
+        assert_eq!(decoded.address_type, AddressType::P2TR);
+        assert!(!decoded.mainnet);
+    }
+
+    #[test]
+    fn test_p2tr_from_internal_key() {
+        use secp256k1::{Secp256k1, SecretKey, Keypair, XOnlyPublicKey};
+
+        let secret = SecretKey::from_slice(&[0x42; 32]).unwrap();
+        let secp = Secp256k1::new();
+        let keypair = Keypair::from_secret_key(&secp, &secret);
+        let (xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
+
+        let addr = Address::p2tr_from_internal_key(&xonly.serialize(), true).unwrap();
+
+        assert!(addr.encoded.starts_with("bc1p"));
+        assert_eq!(addr.address_type, AddressType::P2TR);
+        assert!(addr.script_pubkey.is_p2tr());
+
+        // Decode roundtrip
+        let decoded = Address::decode(&addr.encoded).unwrap();
+        assert_eq!(decoded.script_pubkey.as_bytes(), addr.script_pubkey.as_bytes());
+    }
+
+    #[test]
+    fn test_bech32m_roundtrip() {
+        // Test that bech32m encode/decode is consistent
+        let program = [0x42; 32];
+        let encoded = bech32m_encode("bc", 1, &program);
+        assert!(encoded.starts_with("bc1p"));
+
+        let (hrp, version, decoded_program, encoding) =
+            bech32_decode_versioned(&encoded).unwrap();
+        assert_eq!(hrp, "bc");
+        assert_eq!(version, 1);
+        assert_eq!(decoded_program, program);
+        assert_eq!(encoding, Bech32Encoding::Bech32m);
+    }
+
+    #[test]
+    fn test_bech32_vs_bech32m_different_checksums() {
+        // Verify that bech32 and bech32m produce different encodings
+        // for the same data (different checksum constants)
+        let program = [0x42; 32];
+        let bech32_addr = bech32_encode("bc", 1, &program);
+        let bech32m_addr = bech32m_encode("bc", 1, &program);
+
+        // Same data part but different checksums → different last 6 chars
+        assert_ne!(bech32_addr, bech32m_addr);
     }
 }

@@ -433,9 +433,9 @@ fn test_deserialize_real_mainnet_tx() {
 
 use btc_domain::wallet::keys::PrivateKey;
 use btc_domain::wallet::tx_builder::{
-    InputInfo, TransactionBuilder, make_p2pkh_script, make_p2wpkh_script,
+    InputInfo, TransactionBuilder, make_p2pkh_script, make_p2wpkh_script, make_p2tr_script,
 };
-use btc_domain::crypto::signing::TransactionSignatureChecker;
+use btc_domain::crypto::signing::{TransactionSignatureChecker, SpentOutput};
 use btc_domain::{
     ScriptFlags, verify_script, verify_script_with_witness,
 };
@@ -461,6 +461,7 @@ fn test_e2e_p2pkh_sign_and_verify() {
             amount: input_amount,
             signing_key: Some(key),
             sequence: 0xFFFFFFFF,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))) // OP_1
         .sign()
@@ -500,6 +501,7 @@ fn test_e2e_p2wpkh_sign_serialize_deserialize_verify() {
             amount: input_amount,
             signing_key: Some(key),
             sequence: 0xFFFFFFFE,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(190_000), Script::from_bytes(vec![0x51])))
         .sign()
@@ -554,6 +556,7 @@ fn test_e2e_p2pkh_legacy_roundtrip() {
             amount: input_amount,
             signing_key: Some(key),
             sequence: 0xFFFFFFFF,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(40_000), make_p2pkh_script(&[0x11; 20])))
         .sign()
@@ -601,6 +604,7 @@ fn test_e2e_multi_input_mixed_signing() {
             amount: amount1,
             signing_key: Some(key1),
             sequence: 0xFFFFFFFF,
+            tap_script_path: None,
         })
         .add_input(InputInfo {
             outpoint: OutPoint::new(Txid::from_hash(Hash256::from_bytes([0xEE; 32])), 1),
@@ -608,6 +612,7 @@ fn test_e2e_multi_input_mixed_signing() {
             amount: amount2,
             signing_key: Some(key2),
             sequence: 0xFFFFFFFE,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(250_000), Script::from_bytes(vec![0x51])))
         .sign()
@@ -678,6 +683,7 @@ fn test_e2e_wrong_key_fails_verification() {
             amount: input_amount,
             signing_key: Some(wrong_key),
             sequence: 0xFFFFFFFF,
+            tap_script_path: None,
         })
         .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51])))
         .sign()
@@ -692,4 +698,323 @@ fn test_e2e_wrong_key_fails_verification() {
         &checker,
     );
     assert!(result.is_err(), "Verification should fail with wrong signing key");
+}
+
+// E2E: Generate key → build P2TR tx → sign → serialize → deserialize → verify
+#[test]
+fn test_e2e_p2tr_sign_serialize_deserialize_verify() {
+    use secp256k1::{Secp256k1, Keypair, XOnlyPublicKey, Scalar};
+
+    // 1. Generate keypair and derive P2TR output key
+    let key = PrivateKey::generate(true, true);
+    let secp = Secp256k1::new();
+    let keypair = Keypair::from_secret_key(&secp, key.inner());
+    let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
+
+    // Compute tweaked output key (key-path-only)
+    let tweak = btc_domain::crypto::taproot::taptweak_hash(
+        &internal_xonly.serialize(), None,
+    );
+    let scalar = Scalar::from_be_bytes(tweak).unwrap();
+    let (output_key, _) = internal_xonly.add_tweak(&secp, &scalar).unwrap();
+
+    let script_pubkey = make_p2tr_script(&output_key.serialize());
+    let input_amount = Amount::from_sat(200_000);
+
+    // 2. Build and sign P2TR transaction
+    let tx = TransactionBuilder::new()
+        .version(2)
+        .add_input(InputInfo {
+            outpoint: OutPoint::new(Txid::from_hash(Hash256::from_bytes([0xAA; 32])), 0),
+            script_pubkey: script_pubkey.clone(),
+            amount: input_amount,
+            signing_key: Some(key),
+            sequence: 0xFFFFFFFE,
+            tap_script_path: None,
+        })
+        .add_output(TxOut::new(Amount::from_sat(190_000), Script::from_bytes(vec![0x51])))
+        .sign()
+        .unwrap();
+
+    // 3. Verify structure
+    assert!(tx.inputs[0].script_sig.is_empty(), "P2TR should have empty scriptSig");
+    assert_eq!(tx.inputs[0].witness.len(), 1, "P2TR witness should have [signature]");
+    assert_eq!(tx.inputs[0].witness.get(0).unwrap().len(), 64, "Schnorr sig is 64 bytes");
+
+    // 4. Serialize and deserialize
+    let wire_bytes = tx.serialize();
+    let tx2 = Transaction::deserialize_exact(&wire_bytes).unwrap();
+    assert_eq!(tx.txid(), tx2.txid(), "Txid survives round-trip");
+    assert_eq!(tx2.inputs[0].witness.len(), 1);
+
+    // 5. Verify the signature through the script interpreter
+    let spent_outputs = vec![SpentOutput {
+        amount: input_amount,
+        script_pubkey: script_pubkey.clone(),
+    }];
+    let checker = TransactionSignatureChecker::new_taproot(&tx2, 0, spent_outputs);
+    let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS | ScriptFlags::VERIFY_TAPROOT);
+
+    let result = verify_script_with_witness(
+        &tx2.inputs[0].script_sig,
+        &script_pubkey,
+        &tx2.inputs[0].witness,
+        flags,
+        &checker,
+    );
+    assert!(result.is_ok(), "P2TR key-path verification failed: {:?}", result.err());
+}
+
+// E2E: P2TR address creation → tx signing → verification round-trip
+#[test]
+fn test_e2e_p2tr_address_to_verification() {
+    use secp256k1::{Secp256k1, Keypair, XOnlyPublicKey};
+    use btc_domain::wallet::address::Address;
+
+    let key = PrivateKey::generate(true, true);
+    let secp = Secp256k1::new();
+    let keypair = Keypair::from_secret_key(&secp, key.inner());
+    let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
+
+    // Create P2TR address from internal key
+    let addr = Address::p2tr_from_internal_key(&internal_xonly.serialize(), true).unwrap();
+    assert!(addr.encoded.starts_with("bc1p"));
+    assert!(addr.script_pubkey.is_p2tr());
+
+    let input_amount = Amount::from_sat(500_000);
+
+    // Sign transaction spending this P2TR output
+    let tx = TransactionBuilder::new()
+        .version(2)
+        .add_input(InputInfo {
+            outpoint: OutPoint::new(Txid::from_hash(Hash256::from_bytes([0xCC; 32])), 0),
+            script_pubkey: addr.script_pubkey.clone(),
+            amount: input_amount,
+            signing_key: Some(key),
+            sequence: 0xFFFFFFFE,
+            tap_script_path: None,
+        })
+        .add_output(TxOut::new(Amount::from_sat(490_000), Script::from_bytes(vec![0x51])))
+        .sign()
+        .unwrap();
+
+    // Verify through script interpreter
+    let spent_outputs = vec![SpentOutput {
+        amount: input_amount,
+        script_pubkey: addr.script_pubkey.clone(),
+    }];
+    let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+    let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS | ScriptFlags::VERIFY_TAPROOT);
+
+    let result = verify_script_with_witness(
+        &tx.inputs[0].script_sig,
+        &addr.script_pubkey,
+        &tx.inputs[0].witness,
+        flags,
+        &checker,
+    );
+    assert!(result.is_ok(), "P2TR address-based verification failed: {:?}", result.err());
+}
+
+// ── Taproot script-path spending E2E tests ────────────────────────
+
+// E2E: Build a TapTree with two scripts, spend via script-path leaf 0
+#[test]
+fn test_e2e_taproot_script_path_single_checksig() {
+    use secp256k1::{Secp256k1, Keypair, XOnlyPublicKey};
+    use btc_domain::crypto::taproot::{TapTree, TapLeaf};
+    use btc_domain::wallet::tx_builder::TapScriptPath;
+
+    // 1. Generate keypair
+    let key = PrivateKey::generate(true, true);
+    let secp = Secp256k1::new();
+    let keypair = Keypair::from_secret_key(&secp, key.inner());
+    let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
+    let internal_key = internal_xonly.serialize();
+
+    // 2. Build a tapscript: <pubkey> OP_CHECKSIG
+    //    (This is the simplest useful tapscript — single-sig via script-path)
+    let mut tap_script_bytes = Vec::new();
+    tap_script_bytes.push(0x20); // push 32 bytes
+    tap_script_bytes.extend_from_slice(&internal_key);
+    tap_script_bytes.push(0xac); // OP_CHECKSIG
+    let tap_script = Script::from_bytes(tap_script_bytes.clone());
+
+    // 3. Build TapTree with two leaves: our checksig script + a dummy OP_1
+    let tree = TapTree::new(vec![
+        TapLeaf::new(tap_script_bytes.clone()),
+        TapLeaf::new(vec![0x51]), // OP_1 (alternative spending path)
+    ]);
+
+    // 4. Compute output key and control block for leaf 0
+    let (output_key, parity) = tree.compute_output_key(&internal_key).unwrap();
+    let control = tree.control_block(0, &internal_key, parity).unwrap();
+    let control_bytes = TapTree::serialize_control_block(&control);
+
+    let script_pubkey = make_p2tr_script(&output_key);
+    let input_amount = Amount::from_sat(300_000);
+    let leaf_hash = tree.leaf_hash(0).unwrap();
+
+    // 5. Build and sign transaction using script-path
+    let tx = TransactionBuilder::new()
+        .version(2)
+        .add_input(InputInfo {
+            outpoint: OutPoint::new(Txid::from_hash(Hash256::from_bytes([0xDD; 32])), 0),
+            script_pubkey: script_pubkey.clone(),
+            amount: input_amount,
+            signing_key: Some(key),
+            sequence: 0xFFFFFFFE,
+            tap_script_path: Some(TapScriptPath {
+                script: tap_script.clone(),
+                control_block: control_bytes.clone(),
+                leaf_hash,
+            }),
+        })
+        .add_output(TxOut::new(Amount::from_sat(290_000), Script::from_bytes(vec![0x51])))
+        .sign()
+        .unwrap();
+
+    // 6. Verify witness structure: [signature, script, control_block]
+    assert!(tx.inputs[0].script_sig.is_empty(), "Taproot has empty scriptSig");
+    assert_eq!(tx.inputs[0].witness.len(), 3, "Script-path witness = [sig, script, control]");
+    assert_eq!(tx.inputs[0].witness.get(0).unwrap().len(), 64, "Schnorr sig is 64 bytes");
+    assert_eq!(tx.inputs[0].witness.get(1).unwrap(), tap_script_bytes.as_slice());
+    assert_eq!(tx.inputs[0].witness.get(2).unwrap(), control_bytes.as_slice());
+
+    // 7. Verify through the script interpreter
+    let spent_outputs = vec![SpentOutput {
+        amount: input_amount,
+        script_pubkey: script_pubkey.clone(),
+    }];
+    let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+    let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS | ScriptFlags::VERIFY_TAPROOT);
+
+    let result = verify_script_with_witness(
+        &tx.inputs[0].script_sig,
+        &script_pubkey,
+        &tx.inputs[0].witness,
+        flags,
+        &checker,
+    );
+    assert!(result.is_ok(), "Taproot script-path verification failed: {:?}", result.err());
+}
+
+// E2E: Spend via the OP_1 (always-true) leaf — no signature needed
+#[test]
+fn test_e2e_taproot_script_path_op1_leaf() {
+    use secp256k1::{Secp256k1, SecretKey};
+    use btc_domain::crypto::taproot::{TapTree, TapLeaf};
+
+    // 1. Create internal key
+    let secp = Secp256k1::new();
+    let secret = SecretKey::from_slice(&[0x77; 32]).unwrap();
+    let (internal_xonly, _) = secret.x_only_public_key(&secp);
+    let internal_key = internal_xonly.serialize();
+
+    // 2. Build tree with OP_1 leaf (always true) and a dummy leaf
+    let tree = TapTree::new(vec![
+        TapLeaf::new(vec![0x51]), // OP_1 — always passes
+        TapLeaf::new(vec![0x52]), // OP_2 — would leave 2 on stack
+    ]);
+
+    // 3. Compute output key
+    let (output_key, parity) = tree.compute_output_key(&internal_key).unwrap();
+    let script_pubkey = make_p2tr_script(&output_key);
+
+    // 4. Build control block for leaf 0 (OP_1)
+    let control = tree.control_block(0, &internal_key, parity).unwrap();
+    let control_bytes = TapTree::serialize_control_block(&control);
+
+    // 5. Build transaction manually with witness = [OP_1_script, control_block]
+    //    No signature needed since OP_1 always succeeds
+    let mut tx = Transaction::new(
+        2,
+        vec![TxIn::new(
+            OutPoint::new(Txid::from_hash(Hash256::from_bytes([0xEE; 32])), 0),
+            Script::new(), // empty scriptSig
+            0xFFFFFFFE,
+        )],
+        vec![TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))],
+        0,
+    );
+
+    // Witness: [script, control_block] — no args needed for OP_1
+    let mut witness = Witness::new();
+    witness.push(vec![0x51]); // the OP_1 script
+    witness.push(control_bytes);
+    tx.inputs[0].witness = witness;
+
+    // 6. Verify through interpreter
+    let input_amount = Amount::from_sat(100_000);
+    let spent_outputs = vec![SpentOutput {
+        amount: input_amount,
+        script_pubkey: script_pubkey.clone(),
+    }];
+    let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+    let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS | ScriptFlags::VERIFY_TAPROOT);
+
+    let result = verify_script_with_witness(
+        &tx.inputs[0].script_sig,
+        &script_pubkey,
+        &tx.inputs[0].witness,
+        flags,
+        &checker,
+    );
+    assert!(result.is_ok(), "OP_1 script-path should succeed: {:?}", result.err());
+}
+
+// E2E: Wrong script in witness should fail verification
+#[test]
+fn test_e2e_taproot_script_path_wrong_script_fails() {
+    use secp256k1::{Secp256k1, SecretKey};
+    use btc_domain::crypto::taproot::{TapTree, TapLeaf};
+
+    let secp = Secp256k1::new();
+    let secret = SecretKey::from_slice(&[0x77; 32]).unwrap();
+    let (internal_xonly, _) = secret.x_only_public_key(&secp);
+    let internal_key = internal_xonly.serialize();
+
+    let tree = TapTree::new(vec![
+        TapLeaf::new(vec![0x51]), // OP_1
+    ]);
+
+    let (output_key, parity) = tree.compute_output_key(&internal_key).unwrap();
+    let script_pubkey = make_p2tr_script(&output_key);
+
+    let control = tree.control_block(0, &internal_key, parity).unwrap();
+    let control_bytes = TapTree::serialize_control_block(&control);
+
+    // Build transaction with the WRONG script in witness (OP_2 instead of OP_1)
+    let mut tx = Transaction::new(
+        2,
+        vec![TxIn::new(
+            OutPoint::new(Txid::from_hash(Hash256::from_bytes([0xFF; 32])), 0),
+            Script::new(),
+            0xFFFFFFFE,
+        )],
+        vec![TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))],
+        0,
+    );
+
+    let mut witness = Witness::new();
+    witness.push(vec![0x52]); // WRONG: OP_2 instead of OP_1
+    witness.push(control_bytes);
+    tx.inputs[0].witness = witness;
+
+    let spent_outputs = vec![SpentOutput {
+        amount: Amount::from_sat(100_000),
+        script_pubkey: script_pubkey.clone(),
+    }];
+    let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+    let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS | ScriptFlags::VERIFY_TAPROOT);
+
+    let result = verify_script_with_witness(
+        &tx.inputs[0].script_sig,
+        &script_pubkey,
+        &tx.inputs[0].witness,
+        flags,
+        &checker,
+    );
+    // Should fail because OP_2 was not committed in the tree
+    assert!(result.is_err(), "Wrong script should fail merkle commitment");
 }

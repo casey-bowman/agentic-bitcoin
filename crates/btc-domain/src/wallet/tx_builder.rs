@@ -3,7 +3,7 @@
 //! Constructs and signs Bitcoin transactions using wallet keys.
 //! Supports P2PKH (legacy) and P2WPKH (native SegWit) inputs.
 
-use crate::crypto::signing::{sighash_type, TransactionSignatureChecker};
+use crate::crypto::signing::{sighash_type, SpentOutput, TransactionSignatureChecker};
 use crate::primitives::{Amount, OutPoint, Transaction, TxIn, TxOut};
 use crate::script::{Opcodes, Script, ScriptBuilder};
 use crate::script::witness::Witness;
@@ -40,6 +40,20 @@ impl std::fmt::Display for BuilderError {
 
 impl std::error::Error for BuilderError {}
 
+/// Taproot script-path spending information.
+///
+/// When provided on an `InputInfo`, the signer will produce a script-path
+/// witness (`[args..., script, control_block]`) instead of a key-path witness.
+#[derive(Debug, Clone)]
+pub struct TapScriptPath {
+    /// The tapscript to execute (the leaf being spent)
+    pub script: Script,
+    /// Serialized control block (leaf_version|parity + internal_key + merkle_path)
+    pub control_block: Vec<u8>,
+    /// The tapleaf hash (precomputed for the sighash)
+    pub leaf_hash: [u8; 32],
+}
+
 /// Information about an input being spent
 #[derive(Debug, Clone)]
 pub struct InputInfo {
@@ -53,6 +67,9 @@ pub struct InputInfo {
     pub signing_key: Option<PrivateKey>,
     /// Sequence number (default: 0xFFFFFFFE for RBF compatibility)
     pub sequence: u32,
+    /// Optional: Taproot script-path spending info. When set, the input
+    /// is signed via script-path instead of key-path.
+    pub tap_script_path: Option<TapScriptPath>,
 }
 
 /// Builds and signs Bitcoin transactions.
@@ -218,6 +235,56 @@ impl TransactionBuilder {
                 witness.push(sig_with_hashtype);
                 witness.push(pubkey_bytes.clone());
                 tx.inputs[i].witness = witness;
+            } else if info.script_pubkey.is_p2tr() {
+                // Taproot P2TR signing (BIP341/BIP342)
+                let spent_outputs: Vec<SpentOutput> = self.inputs.iter().map(|inp| {
+                    SpentOutput {
+                        amount: inp.amount,
+                        script_pubkey: inp.script_pubkey.clone(),
+                    }
+                }).collect();
+
+                // Empty scriptSig for Taproot (must be set before creating checker
+                // which borrows &tx immutably)
+                tx.inputs[i].script_sig = Script::new();
+
+                let checker = TransactionSignatureChecker::new_taproot(
+                    &tx, i, spent_outputs,
+                );
+
+                if let Some(ref script_path) = info.tap_script_path {
+                    // SCRIPT-PATH spending (BIP342)
+                    // 1. Compute script-path sighash with tapleaf hash
+                    let sighash = checker.compute_taproot_sighash_script_path(
+                        &script_path.leaf_hash,
+                    );
+
+                    // 2. Sign with the raw (untweaked) internal key for script-path
+                    let sig = crate::crypto::schnorr::sign_schnorr(
+                        key.inner(),
+                        &sighash,
+                    );
+
+                    // 3. Build witness: [signature, script, control_block]
+                    let mut witness = Witness::new();
+                    witness.push(sig.to_vec());
+                    witness.push(script_path.script.as_bytes().to_vec());
+                    witness.push(script_path.control_block.clone());
+                    tx.inputs[i].witness = witness;
+                } else {
+                    // KEY-PATH spending (BIP341)
+                    let sighash = checker.compute_taproot_sighash();
+
+                    let (sig, _output_key) = crate::crypto::schnorr::sign_schnorr_tweaked(
+                        key.inner(),
+                        None,
+                        &sighash,
+                    );
+
+                    let mut witness = Witness::new();
+                    witness.push(sig.to_vec());
+                    tx.inputs[i].witness = witness;
+                }
             } else if info.script_pubkey.is_p2sh() {
                 // P2SH-P2WPKH: scriptSig contains the redeem script,
                 // witness contains the signature and pubkey
@@ -332,6 +399,15 @@ pub fn make_p2wpkh_script(pubkey_hash: &[u8; 20]) -> Script {
     Script::from_bytes(bytes)
 }
 
+/// Create a P2TR scriptPubKey from a 32-byte x-only output key.
+pub fn make_p2tr_script(output_key: &[u8; 32]) -> Script {
+    let mut bytes = Vec::with_capacity(34);
+    bytes.push(0x51); // OP_1
+    bytes.push(32);
+    bytes.extend_from_slice(output_key);
+    Script::from_bytes(bytes)
+}
+
 /// Estimate the virtual size of a P2PKH input (approx 148 vbytes).
 pub const P2PKH_INPUT_VSIZE: u32 = 148;
 
@@ -346,6 +422,12 @@ pub const P2PKH_OUTPUT_VSIZE: u32 = 34;
 
 /// Estimate the virtual size of a P2WPKH output (31 vbytes).
 pub const P2WPKH_OUTPUT_VSIZE: u32 = 31;
+
+/// Estimate the virtual size of a P2TR input (approx 57.5 vbytes).
+pub const P2TR_INPUT_VSIZE: u32 = 58;
+
+/// Estimate the virtual size of a P2TR output (43 vbytes).
+pub const P2TR_OUTPUT_VSIZE: u32 = 43;
 
 /// Transaction overhead: version(4) + locktime(4) + input_count(1) + output_count(1) = 10
 /// For SegWit: + marker(1) + flag(1) = 12, but witness is discounted
@@ -375,6 +457,7 @@ mod tests {
                 amount: Amount::from_sat(100_000),
                 signing_key: None,
                 sequence: 0xFFFFFFFE,
+                tap_script_path: None,
             })
             .build_unsigned();
 
@@ -391,6 +474,7 @@ mod tests {
                 amount: Amount::from_sat(100_000),
                 signing_key: None,
                 sequence: 0xFFFFFFFE,
+                tap_script_path: None,
             })
             .add_output(TxOut::new(Amount::from_sat(90_000), Script::new()))
             .lock_time(0)
@@ -412,6 +496,7 @@ mod tests {
                 amount: Amount::from_sat(100_000),
                 signing_key: None,
                 sequence: 0xFFFFFFFE,
+                tap_script_path: None,
             })
             .add_output(TxOut::new(Amount::from_sat(90_000), Script::new()))
             .sign();
@@ -434,6 +519,7 @@ mod tests {
                 amount: Amount::from_sat(100_000),
                 signing_key: Some(key),
                 sequence: 0xFFFFFFFF,
+                tap_script_path: None,
             })
             .add_output(TxOut::new(Amount::from_sat(90_000), Script::new()))
             .sign()
@@ -458,6 +544,7 @@ mod tests {
                 amount: Amount::from_sat(100_000),
                 signing_key: Some(key),
                 sequence: 0xFFFFFFFE,
+                tap_script_path: None,
             })
             .add_output(TxOut::new(Amount::from_sat(90_000), Script::new()))
             .sign()
@@ -480,5 +567,105 @@ mod tests {
 
         let p2wpkh = make_p2wpkh_script(&hash);
         assert!(p2wpkh.is_p2wpkh());
+    }
+
+    #[test]
+    fn test_make_p2tr_script() {
+        let output_key = [0x42; 32];
+        let script = make_p2tr_script(&output_key);
+        assert!(script.is_p2tr());
+        assert_eq!(script.as_bytes().len(), 34);
+        assert_eq!(script.as_bytes()[0], 0x51); // OP_1
+    }
+
+    #[test]
+    fn test_sign_p2tr_produces_witness() {
+        use secp256k1::{Keypair, XOnlyPublicKey, Scalar};
+
+        // Generate a key and derive the P2TR output key
+        let key = PrivateKey::generate(true, true);
+        let secret = key.inner();
+
+        let secp = Secp256k1::new();
+        let keypair = Keypair::from_secret_key(&secp, secret);
+        let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
+
+        // Compute tweaked output key (key-path-only, no merkle root)
+        let tweak = crate::crypto::taproot::taptweak_hash(
+            &internal_xonly.serialize(), None,
+        );
+        let scalar = Scalar::from_be_bytes(tweak).unwrap();
+        let (output_key, _) = internal_xonly.add_tweak(&secp, &scalar).unwrap();
+
+        let script_pubkey = make_p2tr_script(&output_key.serialize());
+
+        let tx = TransactionBuilder::new()
+            .version(2)
+            .add_input(InputInfo {
+                outpoint: OutPoint::new(Txid::zero(), 0),
+                script_pubkey,
+                amount: Amount::from_sat(100_000),
+                signing_key: Some(key),
+                sequence: 0xFFFFFFFE,
+                tap_script_path: None,
+            })
+            .add_output(TxOut::new(Amount::from_sat(90_000), Script::new()))
+            .sign()
+            .unwrap();
+
+        // Should have empty scriptSig
+        assert!(tx.inputs[0].script_sig.is_empty());
+        // Witness should contain exactly 1 item: the 64-byte Schnorr signature
+        assert_eq!(tx.inputs[0].witness.len(), 1);
+        assert_eq!(tx.inputs[0].witness.get(0).unwrap().len(), 64);
+    }
+
+    #[test]
+    fn test_sign_p2tr_signature_verifies() {
+        use secp256k1::{Keypair, XOnlyPublicKey, Scalar};
+
+        let key = PrivateKey::generate(true, true);
+        let secret = key.inner();
+
+        let secp = Secp256k1::new();
+        let keypair = Keypair::from_secret_key(&secp, secret);
+        let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
+
+        let tweak = crate::crypto::taproot::taptweak_hash(
+            &internal_xonly.serialize(), None,
+        );
+        let scalar = Scalar::from_be_bytes(tweak).unwrap();
+        let (output_key, _) = internal_xonly.add_tweak(&secp, &scalar).unwrap();
+
+        let script_pubkey = make_p2tr_script(&output_key.serialize());
+
+        let tx = TransactionBuilder::new()
+            .version(2)
+            .add_input(InputInfo {
+                outpoint: OutPoint::new(Txid::zero(), 0),
+                script_pubkey: script_pubkey.clone(),
+                amount: Amount::from_sat(100_000),
+                signing_key: Some(key),
+                sequence: 0xFFFFFFFE,
+                tap_script_path: None,
+            })
+            .add_output(TxOut::new(Amount::from_sat(90_000), Script::new()))
+            .sign()
+            .unwrap();
+
+        // Verify the Schnorr signature by re-computing the sighash
+        let spent_outputs = vec![SpentOutput {
+            amount: Amount::from_sat(100_000),
+            script_pubkey,
+        }];
+        let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+        let sighash = checker.compute_taproot_sighash();
+
+        let sig = tx.inputs[0].witness.get(0).unwrap();
+        assert!(crate::crypto::schnorr::verify_schnorr(
+            &output_key.serialize(),
+            &sighash,
+            sig,
+        ));
     }
 }

@@ -394,10 +394,17 @@ impl Psbt {
         let pubkey = pubkey.clone();
         let signature = signature.clone();
 
-        if input.witness_utxo.is_some() {
-            // Witness input: create witness stack [signature, pubkey]
-            input.final_script_witness = Some(vec![signature, pubkey]);
-            input.final_script_sig = Some(Script::new()); // empty for native segwit
+        if let Some(ref utxo) = input.witness_utxo {
+            if utxo.script_pubkey.is_p2tr() {
+                // Taproot P2TR: witness is just [signature] (64 or 65 bytes)
+                // No pubkey needed — the output key is in the scriptPubKey
+                input.final_script_witness = Some(vec![signature]);
+                input.final_script_sig = Some(Script::new());
+            } else {
+                // SegWit v0: witness stack [signature, pubkey]
+                input.final_script_witness = Some(vec![signature, pubkey]);
+                input.final_script_sig = Some(Script::new());
+            }
         } else {
             // Legacy input: create scriptSig with <sig> <pubkey>
             let mut script_bytes = Vec::new();
@@ -785,5 +792,245 @@ mod tests {
 
         psbt.set_sighash_type(0, 0x01).unwrap(); // SIGHASH_ALL
         assert_eq!(psbt.inputs[0].sighash_type, Some(0x01));
+    }
+
+    // ── End-to-end PSBT workflow tests ─────────────────────────────
+
+    #[test]
+    fn test_psbt_full_workflow_witness() {
+        // Full BIP174 workflow: create → update → sign → finalize → extract
+        // Simulates a 2-input P2WPKH transaction signed by a single signer.
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // UPDATE: Add witness UTXO info for both inputs
+        let utxo_0 = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x00, 0x14, 0xAA]));
+        let utxo_1 = TxOut::new(Amount::from_sat(80_000), Script::from_bytes(vec![0x00, 0x14, 0xBB]));
+        psbt.set_witness_utxo(0, utxo_0).unwrap();
+        psbt.set_witness_utxo(1, utxo_1).unwrap();
+
+        // UPDATE: Add BIP32 derivation paths
+        let deriv = Bip32Derivation {
+            master_fingerprint: [0xDE, 0xAD, 0xBE, 0xEF],
+            path: vec![84 | 0x80000000, 0 | 0x80000000, 0 | 0x80000000, 0, 0],
+        };
+        psbt.add_input_bip32_derivation(0, vec![0x02; 33], deriv.clone()).unwrap();
+        psbt.add_input_bip32_derivation(1, vec![0x02; 33], deriv).unwrap();
+
+        // UPDATE: Set sighash types
+        psbt.set_sighash_type(0, 0x01).unwrap();
+        psbt.set_sighash_type(1, 0x01).unwrap();
+
+        // SIGN: Add partial signatures for both inputs
+        let pubkey = vec![0x02; 33];
+        let sig_0 = vec![0x30; 72]; // mock DER sig
+        let sig_1 = vec![0x31; 72];
+        psbt.add_partial_sig(0, pubkey.clone(), sig_0).unwrap();
+        psbt.add_partial_sig(1, pubkey.clone(), sig_1).unwrap();
+
+        assert_eq!(psbt.signed_input_count(), 2);
+        assert!(!psbt.is_fully_finalized());
+
+        // FINALIZE: Both inputs
+        psbt.finalize_input(0).unwrap();
+        psbt.finalize_input(1).unwrap();
+        assert!(psbt.is_fully_finalized());
+
+        // Verify finalization cleared signing data (but witness_utxo is preserved)
+        assert!(psbt.inputs[0].partial_sigs.is_empty());
+        assert!(psbt.inputs[0].witness_utxo.is_some()); // witness_utxo preserved
+        assert!(psbt.inputs[1].partial_sigs.is_empty());
+
+        // Both inputs should have witness data (P2WPKH)
+        assert!(psbt.inputs[0].final_script_witness.is_some());
+        assert!(psbt.inputs[1].final_script_witness.is_some());
+
+        // EXTRACT: Get the signed transaction
+        let signed_tx = psbt.extract_tx().unwrap();
+        assert_eq!(signed_tx.inputs.len(), 2);
+        assert_eq!(signed_tx.outputs.len(), 2);
+    }
+
+    #[test]
+    fn test_psbt_multi_signer_combine_workflow() {
+        // Simulates a multi-party signing workflow:
+        // Creator makes PSBT → distributes to 2 signers → combine → finalize → extract
+        let tx = make_unsigned_tx();
+
+        // Creator creates base PSBT
+        let base_psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // Signer 1 gets a copy, adds their signature to input 0
+        let mut signer1_psbt = base_psbt.clone();
+        let utxo_0 = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x00, 0x14]));
+        signer1_psbt.set_witness_utxo(0, utxo_0).unwrap();
+        signer1_psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+
+        // Signer 2 gets a copy, adds their signature to input 1
+        let mut signer2_psbt = base_psbt.clone();
+        let utxo_1 = TxOut::new(Amount::from_sat(80_000), Script::from_bytes(vec![0x00, 0x14]));
+        signer2_psbt.set_witness_utxo(1, utxo_1).unwrap();
+        signer2_psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72]).unwrap();
+
+        // Combiner merges both
+        let mut combined = signer1_psbt;
+        combined.combine(signer2_psbt).unwrap();
+        assert_eq!(combined.signed_input_count(), 2);
+
+        // Verify witness UTXOs were merged
+        assert!(combined.inputs[0].witness_utxo.is_some());
+        assert!(combined.inputs[1].witness_utxo.is_some());
+
+        // Finalize and extract
+        combined.finalize_input(0).unwrap();
+        combined.finalize_input(1).unwrap();
+        assert!(combined.is_fully_finalized());
+
+        let signed_tx = combined.extract_tx().unwrap();
+        assert_eq!(signed_tx.inputs.len(), 2);
+    }
+
+    #[test]
+    fn test_psbt_legacy_full_workflow() {
+        // Full workflow for legacy (non-witness) inputs
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // No witness UTXO set → legacy finalization path
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72]).unwrap();
+
+        psbt.finalize_input(0).unwrap();
+        psbt.finalize_input(1).unwrap();
+
+        // Both should have scriptSig, not witness
+        assert!(psbt.inputs[0].final_script_sig.is_some());
+        assert!(psbt.inputs[0].final_script_witness.is_none());
+        assert!(psbt.inputs[1].final_script_sig.is_some());
+        assert!(psbt.inputs[1].final_script_witness.is_none());
+
+        let signed_tx = psbt.extract_tx().unwrap();
+        assert!(!signed_tx.inputs[0].script_sig.is_empty());
+        assert!(!signed_tx.inputs[1].script_sig.is_empty());
+    }
+
+    #[test]
+    fn test_psbt_serialize_deserialize_roundtrip() {
+        // Verify serialization produces valid PSBT magic and is deterministic
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        let utxo = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x00, 0x14]));
+        psbt.set_witness_utxo(0, utxo).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+
+        let bytes1 = psbt.serialize();
+        let bytes2 = psbt.serialize();
+
+        // Deterministic
+        assert_eq!(bytes1, bytes2);
+
+        // Starts with PSBT magic
+        assert_eq!(&bytes1[..5], &PSBT_MAGIC);
+
+        // Non-trivial size (has actual data)
+        assert!(bytes1.len() > 20);
+    }
+
+    #[test]
+    fn test_psbt_error_index_out_of_bounds() {
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // Input index 5 is out of bounds (only 2 inputs)
+        let result = psbt.set_witness_utxo(
+            5,
+            TxOut::new(Amount::from_sat(100_000), Script::new()),
+        );
+        assert!(result.is_err());
+
+        let result = psbt.add_partial_sig(5, vec![0x02; 33], vec![0x30; 72]);
+        assert!(result.is_err());
+
+        let result = psbt.finalize_input(5);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_psbt_finalize_unsigned_input_fails() {
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // No signatures added — finalize should fail
+        let result = psbt.finalize_input(0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_psbt_double_finalize_is_idempotent() {
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.finalize_input(0).unwrap();
+
+        // Second finalize is idempotent (returns Ok, no-op)
+        let result = psbt.finalize_input(0);
+        assert!(result.is_ok());
+
+        // Still finalized with same data
+        assert!(psbt.inputs[0].final_script_sig.is_some() || psbt.inputs[0].final_script_witness.is_some());
+    }
+
+    #[test]
+    fn test_psbt_p2tr_finalize_single_sig_witness() {
+        // P2TR finalization should produce witness with only [signature], no pubkey
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // Set witness UTXO with a P2TR scriptPubKey (OP_1 <32 bytes>)
+        let mut p2tr_spk = vec![0x51, 32]; // OP_1 + push 32
+        p2tr_spk.extend_from_slice(&[0x42; 32]); // 32-byte output key
+        let utxo = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(p2tr_spk));
+        psbt.set_witness_utxo(0, utxo).unwrap();
+
+        // Add a 64-byte Schnorr signature (no sighash byte → SIGHASH_DEFAULT)
+        let schnorr_sig = vec![0xAB; 64];
+        psbt.add_partial_sig(0, vec![0x42; 32], schnorr_sig.clone()).unwrap();
+
+        psbt.finalize_input(0).unwrap();
+
+        // P2TR witness should be just [signature], not [signature, pubkey]
+        let witness = psbt.inputs[0].final_script_witness.as_ref().unwrap();
+        assert_eq!(witness.len(), 1);
+        assert_eq!(witness[0], schnorr_sig);
+
+        // scriptSig should be empty
+        assert!(psbt.inputs[0].final_script_sig.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_psbt_p2wpkh_finalize_still_has_two_items() {
+        // Ensure P2WPKH finalization still produces [signature, pubkey]
+        let tx = make_unsigned_tx();
+        let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
+
+        // Set witness UTXO with a P2WPKH scriptPubKey (OP_0 <20 bytes>)
+        let mut p2wpkh_spk = vec![0x00, 20]; // OP_0 + push 20
+        p2wpkh_spk.extend_from_slice(&[0xAA; 20]);
+        let utxo = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(p2wpkh_spk));
+        psbt.set_witness_utxo(0, utxo).unwrap();
+
+        let sig = vec![0x30; 72];
+        let pubkey = vec![0x02; 33];
+        psbt.add_partial_sig(0, pubkey.clone(), sig.clone()).unwrap();
+
+        psbt.finalize_input(0).unwrap();
+
+        // P2WPKH witness should be [signature, pubkey]
+        let witness = psbt.inputs[0].final_script_witness.as_ref().unwrap();
+        assert_eq!(witness.len(), 2);
+        assert_eq!(witness[0], sig);
+        assert_eq!(witness[1], pubkey);
     }
 }

@@ -294,6 +294,16 @@ pub trait SignatureChecker: Send + Sync {
     fn check_schnorr_sig(&self, _sig: &[u8], _pubkey: &[u8]) -> bool {
         false
     }
+
+    /// Verify a BIP342 Schnorr signature for Taproot script-path spending.
+    ///
+    /// Like `check_schnorr_sig` but uses the script-path sighash (BIP341 §4.3)
+    /// which includes the tapleaf hash, key version, and code separator position.
+    ///
+    /// Default implementation returns false.
+    fn check_tapscript_sig(&self, _sig: &[u8], _pubkey: &[u8], _leaf_hash: &[u8; 32]) -> bool {
+        false
+    }
 }
 
 /// A no-op signature checker that always returns false.
@@ -313,6 +323,60 @@ impl SignatureChecker for NoSigChecker {
 
     fn check_sequence(&self, _sequence: i64) -> bool {
         false
+    }
+}
+
+/// A signature checker wrapper for BIP342 tapscript execution.
+///
+/// Wraps an existing `SignatureChecker` and overrides signature verification
+/// to use Schnorr with the script-path sighash (which includes the tapleaf hash).
+///
+/// In BIP342 tapscripts:
+/// - OP_CHECKSIG uses Schnorr (not ECDSA) with x-only pubkeys
+/// - The sighash includes the tapleaf hash (BIP341 §4.3)
+/// - OP_CHECKSIGADD is available for multi-sig patterns
+pub struct TapscriptChecker<'a> {
+    inner: &'a dyn SignatureChecker,
+    tapleaf_hash: [u8; 32],
+}
+
+impl<'a> TapscriptChecker<'a> {
+    /// Create a new tapscript checker wrapping an existing checker.
+    pub fn new(inner: &'a dyn SignatureChecker, tapleaf_hash: [u8; 32]) -> Self {
+        TapscriptChecker { inner, tapleaf_hash }
+    }
+}
+
+impl<'a> SignatureChecker for TapscriptChecker<'a> {
+    fn check_sig(&self, sig: &[u8], pubkey: &[u8], _script_code: &Script) -> bool {
+        // In BIP342 tapscript, OP_CHECKSIG uses Schnorr (not ECDSA).
+        // Pubkey must be 32-byte x-only.
+        if pubkey.len() != 32 || sig.is_empty() {
+            return false;
+        }
+        // Parse: 64 bytes = sig + SIGHASH_DEFAULT, 65 bytes = sig + explicit sighash
+        let sig_bytes = match sig.len() {
+            64 => sig,
+            65 => &sig[..64],
+            _ => return false,
+        };
+        self.inner.check_tapscript_sig(sig_bytes, pubkey, &self.tapleaf_hash)
+    }
+
+    fn check_lock_time(&self, lock_time: i64) -> bool {
+        self.inner.check_lock_time(lock_time)
+    }
+
+    fn check_sequence(&self, sequence: i64) -> bool {
+        self.inner.check_sequence(sequence)
+    }
+
+    fn check_schnorr_sig(&self, sig: &[u8], pubkey: &[u8]) -> bool {
+        self.inner.check_tapscript_sig(sig, pubkey, &self.tapleaf_hash)
+    }
+
+    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32]) -> bool {
+        self.inner.check_tapscript_sig(sig, pubkey, leaf_hash)
     }
 }
 
@@ -1029,6 +1093,30 @@ impl<'a> ScriptInterpreter<'a> {
                     }
                 }
 
+                // ---- BIP342 Tapscript ----
+
+                Opcodes::OP_CHECKSIGADD => {
+                    // BIP342: pop pubkey, pop num, pop sig
+                    // If sig is empty → push num (failed sig doesn't abort, just doesn't increment)
+                    // If sig verifies → push num + 1
+                    // If sig is non-empty but invalid → fail
+                    let pubkey = self.pop()?;
+                    let n = self.pop_num()?;
+                    let sig = self.pop()?;
+
+                    if sig.is_empty() {
+                        // Empty sig = "I'm not signing" — push n unchanged
+                        self.push_num(n)?;
+                    } else {
+                        let sc = self.script_code.clone();
+                        let ok = self.checker.check_sig(&sig, &pubkey, &sc);
+                        if !ok {
+                            return Err(ScriptError::SchnorrSigVerifyFail);
+                        }
+                        self.push_num(n + 1)?;
+                    }
+                }
+
                 // ---- Locktime ----
 
                 Opcodes::OP_CHECKLOCKTIMEVERIFY => {
@@ -1439,9 +1527,19 @@ fn verify_taproot(
                 return Err(ScriptError::ScriptSize);
             }
 
+            // Compute the tapleaf hash for script-path sighash
+            let leaf_hash = crate::crypto::taproot::tapleaf_hash(
+                control.leaf_version,
+                script_data,
+            );
+
+            // Wrap the checker in a TapscriptChecker so that OP_CHECKSIG
+            // in tapscripts uses Schnorr + script-path sighash (BIP342)
+            let tapscript_checker = TapscriptChecker::new(checker, leaf_hash);
+
             // Execute the tapscript with the remaining witness items as initial stack
             // (everything except the script and control block)
-            let mut interp = ScriptInterpreter::new(flags, checker);
+            let mut interp = ScriptInterpreter::new(flags, &tapscript_checker);
             for i in 0..stack_size - 2 {
                 interp.push(witness.get(i).unwrap().to_vec())?;
             }

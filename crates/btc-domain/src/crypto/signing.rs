@@ -35,6 +35,19 @@ pub mod sighash_type {
     pub const SIGHASH_ANYONECANPAY: u8 = 0x80;
 }
 
+/// Information about a spent output, needed for Taproot sighash (BIP341).
+///
+/// BIP341 requires committing to the amounts and scriptPubKeys of ALL spent
+/// outputs (not just the current input), unlike BIP143 which only needs the
+/// current input's amount.
+#[derive(Debug, Clone)]
+pub struct SpentOutput {
+    /// The value of the spent output
+    pub amount: Amount,
+    /// The scriptPubKey of the spent output
+    pub script_pubkey: Script,
+}
+
 /// A signature checker that verifies ECDSA signatures for a specific
 /// transaction input.
 ///
@@ -54,6 +67,11 @@ pub struct TransactionSignatureChecker<'a> {
     sequence: u32,
     /// Whether to use BIP143 (SegWit v0) sighash computation
     witness_v0: bool,
+    /// All spent outputs (needed for Taproot sighash — BIP341 §4.1)
+    spent_outputs: Option<Vec<SpentOutput>>,
+    /// Tapleaf hash for script-path spending (BIP341 §4.3).
+    /// When set, check_schnorr_sig uses script-path sighash instead of key-path.
+    tapleaf_hash: Option<[u8; 32]>,
 }
 
 impl<'a> TransactionSignatureChecker<'a> {
@@ -73,6 +91,8 @@ impl<'a> TransactionSignatureChecker<'a> {
             lock_time,
             sequence,
             witness_v0: false,
+            spent_outputs: None,
+            tapleaf_hash: None,
         }
     }
 
@@ -85,6 +105,33 @@ impl<'a> TransactionSignatureChecker<'a> {
         let mut checker = Self::new(tx, input_index, amount);
         checker.witness_v0 = true;
         checker
+    }
+
+    /// Create a new signature checker configured for Taproot (BIP341) sighash.
+    ///
+    /// BIP341 requires all spent outputs (amounts + scriptPubKeys) to be
+    /// committed in the sighash, not just the current input's.
+    pub fn new_taproot(
+        tx: &'a Transaction,
+        input_index: usize,
+        spent_outputs: Vec<SpentOutput>,
+    ) -> Self {
+        let amount = if input_index < spent_outputs.len() {
+            spent_outputs[input_index].amount
+        } else {
+            Amount::from_sat(0)
+        };
+        let mut checker = Self::new(tx, input_index, amount);
+        checker.spent_outputs = Some(spent_outputs);
+        checker
+    }
+
+    /// Set the tapleaf hash for script-path signature verification.
+    ///
+    /// When set, `check_schnorr_sig` will compute the script-path sighash
+    /// (BIP341 §4.3) instead of the key-path sighash.
+    pub fn set_tapleaf_hash(&mut self, leaf_hash: [u8; 32]) {
+        self.tapleaf_hash = Some(leaf_hash);
     }
 
     /// Compute the Taproot sighash for key-path spending (BIP341 §4.1).
@@ -106,25 +153,39 @@ impl<'a> TransactionSignatureChecker<'a> {
         }
         let sha_prevouts: [u8; 32] = prevouts_hasher.finalize().into();
 
-        // SHA256 of all amounts — we only have our own amount, so for a complete
-        // implementation all spent amounts would need to be provided. For now,
-        // we use the known amount for our input and zero for others.
-        // TODO: Full implementation should accept all spent amounts
+        // SHA256 of all amounts
         let mut amounts_hasher = Sha256::new();
-        for (i, _input) in self.tx.inputs.iter().enumerate() {
-            if i == self.input_index {
-                amounts_hasher.update(&self.amount.as_sat().to_le_bytes());
-            } else {
-                amounts_hasher.update(&0i64.to_le_bytes());
+        if let Some(ref spent) = self.spent_outputs {
+            // Full BIP341: use all spent output amounts
+            for so in spent {
+                amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
+            }
+        } else {
+            // Fallback: only our own amount is known
+            for (i, _input) in self.tx.inputs.iter().enumerate() {
+                if i == self.input_index {
+                    amounts_hasher.update(&self.amount.as_sat().to_le_bytes());
+                } else {
+                    amounts_hasher.update(&0i64.to_le_bytes());
+                }
             }
         }
         let sha_amounts: [u8; 32] = amounts_hasher.finalize().into();
 
-        // SHA256 of all scriptpubkeys — we don't have them all, use empty
-        // TODO: Full implementation should accept all spent scriptpubkeys
+        // SHA256 of all scriptpubkeys
         let mut spks_hasher = Sha256::new();
-        for _ in &self.tx.inputs {
-            spks_hasher.update(&[0x00]); // empty script compact size
+        if let Some(ref spent) = self.spent_outputs {
+            // Full BIP341: use all spent output scriptPubKeys
+            for so in spent {
+                let spk = so.script_pubkey.as_bytes();
+                encode_compact_size_into(&mut spks_hasher, spk.len());
+                spks_hasher.update(spk);
+            }
+        } else {
+            // Fallback: empty scripts
+            for _ in &self.tx.inputs {
+                spks_hasher.update(&[0x00]);
+            }
         }
         let sha_scriptpubkeys: [u8; 32] = spks_hasher.finalize().into();
 
@@ -162,6 +223,97 @@ impl<'a> TransactionSignatureChecker<'a> {
         preimage.push(0x00);
         // input_index
         preimage.extend_from_slice(&(self.input_index as u32).to_le_bytes());
+
+        super::taproot::taproot_sighash(0x00, 0x00, &preimage)
+    }
+
+    /// Compute the Taproot sighash for script-path spending (BIP341 §4.3).
+    ///
+    /// Script-path spending extends the key-path sighash with:
+    /// - `spend_type` = `ext_flag * 2` (ext_flag = 1 for script-path)
+    /// - tapleaf_hash (32 bytes) appended after input_index
+    /// - key_version (1 byte, always 0x00 for BIP342 tapscripts)
+    /// - code_separator_pos (4 bytes, 0xFFFFFFFF if no OP_CODESEPARATOR)
+    pub(crate) fn compute_taproot_sighash_script_path(
+        &self,
+        leaf_hash: &[u8; 32],
+    ) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
+        // Same common preimage as key-path...
+        let mut prevouts_hasher = Sha256::new();
+        for input in &self.tx.inputs {
+            prevouts_hasher.update(input.previous_output.txid.as_bytes());
+            prevouts_hasher.update(&input.previous_output.vout.to_le_bytes());
+        }
+        let sha_prevouts: [u8; 32] = prevouts_hasher.finalize().into();
+
+        let mut amounts_hasher = Sha256::new();
+        if let Some(ref spent) = self.spent_outputs {
+            for so in spent {
+                amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
+            }
+        } else {
+            for (i, _) in self.tx.inputs.iter().enumerate() {
+                if i == self.input_index {
+                    amounts_hasher.update(&self.amount.as_sat().to_le_bytes());
+                } else {
+                    amounts_hasher.update(&0i64.to_le_bytes());
+                }
+            }
+        }
+        let sha_amounts: [u8; 32] = amounts_hasher.finalize().into();
+
+        let mut spks_hasher = Sha256::new();
+        if let Some(ref spent) = self.spent_outputs {
+            for so in spent {
+                let spk = so.script_pubkey.as_bytes();
+                encode_compact_size_into(&mut spks_hasher, spk.len());
+                spks_hasher.update(spk);
+            }
+        } else {
+            for _ in &self.tx.inputs {
+                spks_hasher.update(&[0x00]);
+            }
+        }
+        let sha_scriptpubkeys: [u8; 32] = spks_hasher.finalize().into();
+
+        let mut sequences_hasher = Sha256::new();
+        for input in &self.tx.inputs {
+            sequences_hasher.update(&input.sequence.to_le_bytes());
+        }
+        let sha_sequences: [u8; 32] = sequences_hasher.finalize().into();
+
+        let mut outputs_hasher = Sha256::new();
+        for output in &self.tx.outputs {
+            outputs_hasher.update(&output.value.as_sat().to_le_bytes());
+            let spk_bytes = output.script_pubkey.as_bytes();
+            encode_compact_size_into(&mut outputs_hasher, spk_bytes.len());
+            outputs_hasher.update(spk_bytes);
+        }
+        let sha_outputs: [u8; 32] = outputs_hasher.finalize().into();
+
+        // Build preimage
+        let mut preimage = Vec::with_capacity(250);
+        preimage.extend_from_slice(&self.tx.version.to_le_bytes());
+        preimage.extend_from_slice(&self.lock_time.to_le_bytes());
+        preimage.extend_from_slice(&sha_prevouts);
+        preimage.extend_from_slice(&sha_amounts);
+        preimage.extend_from_slice(&sha_scriptpubkeys);
+        preimage.extend_from_slice(&sha_sequences);
+        preimage.extend_from_slice(&sha_outputs);
+        // spend_type: ext_flag=1 → spend_type = 0x02 (no annex)
+        preimage.push(0x02);
+        // input_index
+        preimage.extend_from_slice(&(self.input_index as u32).to_le_bytes());
+
+        // Script-path extension (BIP341 §4.3):
+        // tapleaf_hash (32 bytes)
+        preimage.extend_from_slice(leaf_hash);
+        // key_version (1 byte, 0x00 for BIP342)
+        preimage.push(0x00);
+        // code_separator_pos (4 bytes LE, 0xFFFFFFFF = no OP_CODESEPARATOR executed)
+        preimage.extend_from_slice(&0xFFFFFFFFu32.to_le_bytes());
 
         super::taproot::taproot_sighash(0x00, 0x00, &preimage)
     }
@@ -496,17 +648,22 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
             return false;
         }
 
-        // Compute the Taproot key-path sighash (BIP341 §4.1)
-        // Simplified: SIGHASH_DEFAULT/ALL commits to all inputs and outputs.
-        //
-        // The full sighash preimage is:
-        //   epoch (0x00) || hash_type || nVersion || nLockTime ||
-        //   sha256(prevouts) || sha256(amounts) || sha256(scriptpubkeys) ||
-        //   sha256(sequences) || sha256(outputs) || spend_type || input_index
-        //
-        // We compute this from the transaction data.
-        let sighash = self.compute_taproot_sighash();
+        // Use script-path sighash if tapleaf_hash is set, else key-path
+        let sighash = if let Some(ref leaf_hash) = self.tapleaf_hash {
+            self.compute_taproot_sighash_script_path(leaf_hash)
+        } else {
+            self.compute_taproot_sighash()
+        };
 
+        super::schnorr::verify_schnorr(pubkey, &sighash, sig)
+    }
+
+    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32]) -> bool {
+        if sig.len() != 64 || pubkey.len() != 32 {
+            return false;
+        }
+
+        let sighash = self.compute_taproot_sighash_script_path(leaf_hash);
         super::schnorr::verify_schnorr(pubkey, &sighash, sig)
     }
 }

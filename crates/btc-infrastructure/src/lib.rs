@@ -715,4 +715,74 @@ mod tests {
         assert_eq!(sm.state(), SyncState::Idle);
         assert_eq!(sm.blocks_remaining(), 0);
     }
+
+    fn make_test_args() -> CliArgs {
+        CliArgs {
+            network: "regtest".to_string(),
+            datadir: "/tmp/bitcoin-test".to_string(),
+            rpc_port: 18332,
+            p2p_port: 18333,
+            log_level: "warn".to_string(),
+            max_mempool_mb: 300,
+            enable_p2p: false,
+            seed_peers: Vec::new(),
+            storage_backend: "memory".to_string(),
+            enable_wallet: true,
+            address_type: "bech32".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_node_has_fee_estimator() {
+        let node = BitcoinNode::new(make_test_args()).await.unwrap();
+
+        // Fee estimator should exist and return min relay fee initially
+        let fe = node.fee_estimator.read().await;
+        let estimate = fe.estimate_fee(6);
+        // Min relay fee is 1.0 sat/vB = 1000 sat/kvB
+        assert!(estimate > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_node_has_rebroadcast_manager() {
+        let node = BitcoinNode::new(make_test_args()).await.unwrap();
+
+        let rb = node.rebroadcast_manager.read().await;
+        assert_eq!(rb.tracked_count(), 0, "No transactions should be tracked initially");
+    }
+
+    #[tokio::test]
+    async fn test_node_has_wallet_when_enabled() {
+        let node = BitcoinNode::new(make_test_args()).await.unwrap();
+        assert!(node.wallet.is_some(), "Wallet should be present when enable_wallet is true");
+    }
+
+    #[tokio::test]
+    async fn test_node_no_wallet_when_disabled() {
+        let mut args = make_test_args();
+        args.enable_wallet = false;
+
+        let node = BitcoinNode::new(args).await.unwrap();
+        assert!(node.wallet.is_none(), "Wallet should be absent when enable_wallet is false");
+    }
+
+    #[tokio::test]
+    async fn test_node_mempool_starts_empty() {
+        let node = BitcoinNode::new(make_test_args()).await.unwrap();
+
+        let info = node.mempool_adapter.get_mempool_info().await.unwrap();
+        assert_eq!(info.size, 0);
+        assert_eq!(info.bytes, 0);
+    }
+
+    #[tokio::test]
+    async fn test_node_testnet_creation() {
+        let mut args = make_test_args();
+        args.network = "testnet".to_string();
+
+        let node = BitcoinNode::new(args).await.unwrap();
+        let info = node.get_chain_info().await.unwrap();
+        assert_eq!(info.height, 0);
+        assert_eq!(info.blocks, 1);
+    }
 }

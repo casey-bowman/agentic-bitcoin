@@ -159,6 +159,10 @@ pub enum Opcodes {
     OP_CHECKMULTISIGVERIFY = 0xaf,
     /// Check multisig and verify
 
+    // BIP342 Tapscript opcodes
+    /// BIP342: Check signature and add to accumulator (Tapscript multi-sig)
+    OP_CHECKSIGADD = 0xba,
+
     // Constants/pseudo-opcodes
     /// Push the number -1
     OP_1NEGATE = 0x4f,
@@ -331,6 +335,7 @@ impl Opcodes {
             0xad => Some(Opcodes::OP_CHECKSIGVERIFY),
             0xae => Some(Opcodes::OP_CHECKMULTISIG),
             0xaf => Some(Opcodes::OP_CHECKMULTISIGVERIFY),
+            0xba => Some(Opcodes::OP_CHECKSIGADD),
             0x87 => Some(Opcodes::OP_EQUAL),
             0x88 => Some(Opcodes::OP_EQUALVERIFY),
             0x89 => Some(Opcodes::OP_RESERVED1),

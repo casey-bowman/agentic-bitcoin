@@ -24,4 +24,4 @@ pub use address::{Address, AddressType, AddressError};
 pub use coin_selection::{CoinSelector, SelectionStrategy, CoinSelectionResult};
 pub use hd::{ExtendedPrivateKey, ExtendedPublicKey, HdError, parse_derivation_path, HARDENED_OFFSET};
 pub use psbt::{Psbt, PsbtInput, PsbtOutput, PsbtError, Bip32Derivation};
-pub use tx_builder::{TransactionBuilder, BuilderError};
+pub use tx_builder::{TransactionBuilder, BuilderError, TapScriptPath};
