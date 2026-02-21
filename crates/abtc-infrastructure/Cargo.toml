@@ -1,0 +1,26 @@
+[package]
+name = "abtc-infrastructure"
+version = "0.1.0"
+edition = "2021"
+description = "Agentic-Bitcoin node composition layer — wires domain, adapters, and application services into a runnable node"
+license = "MIT"
+repository = "https://github.com/casey-bowman/agentic-bitcoin"
+homepage = "https://github.com/casey-bowman/agentic-bitcoin"
+keywords = ["bitcoin", "agentic", "clean-architecture", "hexagonal", "ports-and-adapters"]
+categories = ["cryptography::cryptocurrencies"]
+
+[features]
+default = []
+rocksdb-storage = ["abtc-adapters/rocksdb-storage"]
+
+[dependencies]
+abtc-domain = { path = "../abtc-domain", version = "0.1.0" }
+abtc-ports = { path = "../abtc-ports", version = "0.1.0" }
+abtc-adapters = { path = "../abtc-adapters", version = "0.1.0" }
+abtc-application = { path = "../abtc-application", version = "0.1.0" }
+tokio = { version = "1.35", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.4", features = ["derive"] }
+async-trait = "0.1"
+serde_json = "1.0"

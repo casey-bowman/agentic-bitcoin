@@ -1,0 +1,16 @@
+[package]
+name = "abtc-ports"
+version = "0.1.0"
+edition = "2021"
+description = "Trait interfaces (ports) for Agentic-Bitcoin storage, mempool, wallet, mining, network, and RPC"
+license = "MIT"
+repository = "https://github.com/casey-bowman/agentic-bitcoin"
+homepage = "https://github.com/casey-bowman/agentic-bitcoin"
+keywords = ["bitcoin", "agentic", "clean-architecture", "hexagonal", "ports-and-adapters"]
+categories = ["cryptography::cryptocurrencies"]
+
+[dependencies]
+abtc-domain = { path = "../abtc-domain", version = "0.1.0" }
+async-trait = "0.1"
+thiserror = "1.0"
+serde_json = "1.0"

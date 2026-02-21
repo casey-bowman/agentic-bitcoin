@@ -4,11 +4,11 @@
 
 Hexagonal architecture with 5 crates:
 
-- **btc-domain**: Core types, consensus rules, script interpreter, wallet (HD/PSBT/coin selection/tx builder), crypto (hashing, signing, schnorr, taproot)
-- **btc-ports**: Trait interfaces (no implementations)
-- **btc-adapters**: In-memory implementations of port traits (storage, mempool, wallet, mining, network, rpc)
-- **btc-application**: Services and use-cases (chain_state, net_processing, block_template, miner, fee_estimator, mempool_acceptance, compact_blocks, download_scheduler, peer_scoring, orphan_pool, rebroadcast, handlers, chain_events)
-- **btc-infrastructure**: Node wiring layer that composes everything together
+- **abtc-domain**: Core types, consensus rules, script interpreter, wallet (HD/PSBT/coin selection/tx builder), crypto (hashing, signing, schnorr, taproot)
+- **abtc-ports**: Trait interfaces (no implementations)
+- **abtc-adapters**: In-memory implementations of port traits (storage, mempool, wallet, mining, network, rpc)
+- **abtc-application**: Services and use-cases (chain_state, net_processing, block_template, miner, fee_estimator, mempool_acceptance, compact_blocks, download_scheduler, peer_scoring, orphan_pool, rebroadcast, handlers, chain_events)
+- **abtc-infrastructure**: Node wiring layer that composes everything together
 
 ## What Has Been Implemented (Sessions 1–6)
 
@@ -34,11 +34,11 @@ Hexagonal architecture with 5 crates:
 
 | Crate / Binary | Tests | Notes |
 |---|---|---|
-| btc-domain | 266 | Primitives, consensus, script, wallet/HD/PSBT/P2TR, crypto/taproot/schnorr-signing |
-| btc-application (unit) | 178 | chain_state, net_processing, block_template, miner, fee_estimator, mempool_acceptance, compact_blocks, download_scheduler, peer_scoring, orphan_pool, rebroadcast, handlers, chain_events |
-| btc-application (integration) | 20 | chain_state_tests (UTXO tracking, reorg, persistence) |
-| btc-adapters | 76 | storage, mempool, wallet, mining, network, rpc |
-| btc-infrastructure | 10 | Node wiring, fee estimator, rebroadcast, wallet, mempool, testnet |
+| abtc-domain | 266 | Primitives, consensus, script, wallet/HD/PSBT/P2TR, crypto/taproot/schnorr-signing |
+| abtc-application (unit) | 178 | chain_state, net_processing, block_template, miner, fee_estimator, mempool_acceptance, compact_blocks, download_scheduler, peer_scoring, orphan_pool, rebroadcast, handlers, chain_events |
+| abtc-application (integration) | 20 | chain_state_tests (UTXO tracking, reorg, persistence) |
+| abtc-adapters | 76 | storage, mempool, wallet, mining, network, rpc |
+| abtc-infrastructure | 10 | Node wiring, fee estimator, rebroadcast, wallet, mempool, testnet |
 | block_validation_tests | 16 | End-to-end block connect/disconnect with real scripts |
 | tx_validation_tests | 34 | Serialization, signing, policy, end-to-end (incl. P2TR, script-path) |
 | script_tests | 8 | Script vectors, hash known vectors |
@@ -51,7 +51,7 @@ Hexagonal architecture with 5 crates:
 
 ## Simplifications vs Bitcoin Core ("Lite → Full" Upgrade Path)
 
-The current implementation prioritizes correctness of algorithms and interfaces over production-scale performance. Every simplification below is a candidate for a "Full" variant that could handle mainnet-scale load. The hexagonal architecture makes this feasible — most upgrades are new adapters behind existing port traits, leaving btc-domain untouched.
+The current implementation prioritizes correctness of algorithms and interfaces over production-scale performance. Every simplification below is a candidate for a "Full" variant that could handle mainnet-scale load. The hexagonal architecture makes this feasible — most upgrades are new adapters behind existing port traits, leaving abtc-domain untouched.
 
 ### UTXO Storage
 - **Lite (current):** `HashMap<(Txid, u32), UtxoEntry>` in memory. Simple, fast for tests.
@@ -71,7 +71,7 @@ The current implementation prioritizes correctness of algorithms and interfaces 
 ### Script Verification
 - **Lite (current):** Single-threaded, sequential signature checks during block validation.
 - **Full:** `CCheckQueue`-style thread pool distributing signature verification across all CPU cores. Particularly important for blocks with many inputs.
-- **Upgrade path:** Parallel iterator in the block validation loop (e.g., `rayon`), or a dedicated verification queue in btc-application.
+- **Upgrade path:** Parallel iterator in the block validation loop (e.g., `rayon`), or a dedicated verification queue in abtc-application.
 
 ### Peer / Address Management
 - **Lite (current):** Simple new/tried tables with basic eviction and source tracking.
@@ -81,12 +81,12 @@ The current implementation prioritizes correctness of algorithms and interfaces 
 ### Block Index
 - **Lite (current):** `HashMap` with linear ancestor traversal.
 - **Full:** Linked tree with `pskip` pointers for O(log n) ancestor lookups (used heavily in reorg detection and MTP calculation). Persisted to LevelDB.
-- **Upgrade path:** New `BlockIndex` implementation in btc-application with skip-list pointers; storage adapter for persistence.
+- **Upgrade path:** New `BlockIndex` implementation in abtc-application with skip-list pointers; storage adapter for persistence.
 
 ### Fee Estimation
 - **Lite (current):** Sliding window of recent block median fee rates.
 - **Full:** Exponentially-decaying moving average across multiple confirmation-target buckets, tracking where transactions actually confirmed. Core uses ~40 fee rate buckets with 3 decay periods.
-- **Upgrade path:** Replace the fee estimator in btc-application; the port trait already returns fee rate estimates by target.
+- **Upgrade path:** Replace the fee estimator in abtc-application; the port trait already returns fee rate estimates by target.
 
 ### Wallet Persistence
 - **Lite (planned for Session 10):** Simple binary file serialization of keys, UTXOs, addresses, and sync cursor.
@@ -98,7 +98,7 @@ The "Lite" versions are correct — they implement the same algorithms, validate
 
 ## Known Coverage Gaps
 
-- `btc-ports` has 0 tests (trait definitions only, but could test trait object construction)
+- `abtc-ports` has 0 tests (trait definitions only, but could test trait object construction)
 - No tests for chain event bus integration with chain_state (events tested in isolation only)
 - `net_processing.rs` is ~88KB — fuzz/property-based tests would add value
 
@@ -109,6 +109,34 @@ The "Lite" versions are correct — they implement the same algorithms, validate
 - All code compiles with zero warnings as of Session 9
 
 ## Session Log
+
+### Session 10 — Folder Rename & Keyword Cleanup
+- Renamed all 5 crate **folders** from `crates/btc-*` to `crates/abtc-*` to match crate names:
+  - `crates/btc-domain` → `crates/abtc-domain`
+  - `crates/btc-ports` → `crates/abtc-ports`
+  - `crates/btc-adapters` → `crates/abtc-adapters`
+  - `crates/btc-application` → `crates/abtc-application`
+  - `crates/btc-infrastructure` → `crates/abtc-infrastructure`
+- Updated workspace `members` in root Cargo.toml and all 10 inter-crate `path` dependencies to use new folder names
+- Fixed crates.io keyword validation: replaced `"hexagonal-architecture"` (22 chars, over 20-char limit) with `"clean-architecture"`, `"hexagonal"`, `"ports-and-adapters"`
+- Standardized keywords across all 6 Cargo.toml files to: `["bitcoin", "agentic", "clean-architecture", "hexagonal", "ports-and-adapters"]`
+- Verified: 612 tests pass, 0 failures, 0 warnings (output100)
+- Casey's nickname for me: "Art" (short for "Artifact" / the AI assistant)
+
+### Session 9 (continued) — Crate Rename for crates.io Publishing
+- Renamed all 5 workspace crates from `btc-*` to `abtc-*` namespace (binary remains `agentic-bitcoin`):
+  - `btc-domain` → `abtc-domain`
+  - `btc-ports` → `abtc-ports`
+  - `btc-adapters` → `abtc-adapters`
+  - `btc-application` → `abtc-application`
+  - `btc-infrastructure` → `abtc-infrastructure`
+- Added crates.io metadata to all Cargo.toml files: `description`, `license`, `repository`, `homepage`, `keywords`, `categories`
+- Added `version = "0.1.0"` to all inter-crate `path` dependencies (required for crates.io publishing)
+- Updated all 34+ Rust source files: `use btc_domain::` → `use abtc_domain::` etc.
+- Updated doc comments in lib.rs files for ports, adapters, and domain
+- Created README.md with prominent experimental-software warning and full project description
+- Created CRATES.md — user guide for which crate to depend on for different use cases
+- Repository: https://github.com/casey-bowman/agentic-bitcoin
 
 ### Session 9 — Taproot Script-Path Spending (BIP341/BIP342)
 - Added **TapTree** builder to crypto/taproot.rs — `TapLeaf` (leaf_version + script), `TapNode` enum (Leaf/Branch), `TapTree` struct with balanced binary tree construction, merkle root, leaf hashes, control block generation, `serialize_control_block()`, `compute_output_key()`
@@ -128,7 +156,7 @@ The "Lite" versions are correct — they implement the same algorithms, validate
 - Added **P2TR addresses** with bech32m (BIP350) to address.rs — `Address::p2tr()`, `Address::p2tr_from_internal_key()`, bech32m encode/decode with `BECH32M_CONST = 0x2bc830a3`
 - Added **P2TR key-path signing** to tx_builder.rs — detects `is_p2tr()`, collects spent outputs, computes taproot sighash, signs with tweaked key
 - Added **P2TR PSBT finalization** to psbt.rs — produces witness with `[signature]` only (no pubkey), vs P2WPKH `[signature, pubkey]`
-- Added **P2TR to btc-adapters** — wallet now handles `AddressType::P2TR` for address generation and key import
+- Added **P2TR to abtc-adapters** — wallet now handles `AddressType::P2TR` for address generation and key import
 - Removed obsolete `bech32_decode` and `bech32_verify_checksum` (superseded by versioned variants)
 - 19 new tests: 5 schnorr signing, 8 P2TR address, 3 tx_builder P2TR, 2 PSBT P2TR, 2 E2E integration (sign+serialize+verify, address-to-verification)
 - Final: 601 tests pass, 0 failures, 4 warnings (unused imports — cleaned up post-output)

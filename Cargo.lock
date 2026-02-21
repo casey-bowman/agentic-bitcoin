@@ -3,10 +3,85 @@
 version = 4
 
 [[package]]
+name = "abtc-adapters"
+version = "0.1.0"
+dependencies = [
+ "abtc-domain",
+ "abtc-ports",
+ "async-trait",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "abtc-application"
+version = "0.1.0"
+dependencies = [
+ "abtc-adapters",
+ "abtc-domain",
+ "abtc-ports",
+ "async-trait",
+ "hex",
+ "rand",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "abtc-domain"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "hmac",
+ "rand",
+ "ripemd",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "abtc-infrastructure"
+version = "0.1.0"
+dependencies = [
+ "abtc-adapters",
+ "abtc-application",
+ "abtc-domain",
+ "abtc-ports",
+ "async-trait",
+ "clap",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "abtc-ports"
+version = "0.1.0"
+dependencies = [
+ "abtc-domain",
+ "async-trait",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "agentic-bitcoin"
 version = "0.1.0"
 dependencies = [
- "btc-infrastructure",
+ "abtc-infrastructure",
  "tokio",
 ]
 
@@ -131,81 +206,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "btc-adapters"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "btc-domain",
- "btc-ports",
- "rocksdb",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "btc-application"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "btc-adapters",
- "btc-domain",
- "btc-ports",
- "hex",
- "rand",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "btc-domain"
-version = "0.1.0"
-dependencies = [
- "hex",
- "hmac",
- "rand",
- "ripemd",
- "secp256k1",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "btc-infrastructure"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "btc-adapters",
- "btc-application",
- "btc-domain",
- "btc-ports",
- "clap",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "btc-ports"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "btc-domain",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]

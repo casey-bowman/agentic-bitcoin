@@ -16,17 +16,17 @@ The project was built collaboratively between a human and an AI pair-programming
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                 btc-infrastructure                   │
+│              abtc-infrastructure                     │
 │            (Node wiring, composition)                │
 ├──────────────────────┬──────────────────────────────┤
-│    btc-application   │        btc-adapters           │
+│   abtc-application   │       abtc-adapters           │
 │  (Services, use      │  (In-memory implementations   │
 │   cases, handlers)   │   of port traits)             │
 ├──────────────────────┴──────────────────────────────┤
-│                    btc-ports                          │
+│                   abtc-ports                          │
 │           (Trait interfaces only)                     │
 ├─────────────────────────────────────────────────────┤
-│                    btc-domain                         │
+│                   abtc-domain                         │
 │  (Pure domain logic: primitives, consensus, script,  │
 │   crypto, wallet — zero infrastructure deps)         │
 └─────────────────────────────────────────────────────┘
@@ -34,11 +34,13 @@ The project was built collaboratively between a human and an AI pair-programming
 
 The five crates, from innermost to outermost:
 
-- **btc-domain** — Core types, consensus rules, script interpreter (all opcodes including SegWit v0 and v1), wallet (HD/BIP32/BIP44, PSBT/BIP174, coin selection, transaction builder), and crypto (SHA-256, RIPEMD-160, secp256k1, Schnorr/BIP340, Taproot/BIP341/BIP342). Pure logic with no I/O.
-- **btc-ports** — Trait definitions for storage, mempool, wallet, mining, network, and RPC. No implementations.
-- **btc-adapters** — In-memory implementations of all port traits. Suitable for testing and lightweight usage.
-- **btc-application** — Services and use cases: chain state management, P2P message processing, block templates, mining, fee estimation, mempool acceptance, compact blocks (BIP152), download scheduling, peer scoring, orphan pool, transaction rebroadcast, RPC handlers, and chain event notifications.
-- **btc-infrastructure** — Top-level node composition that wires everything together.
+- **abtc-domain** — Core types, consensus rules, script interpreter (all opcodes including SegWit v0 and v1), wallet (HD/BIP32/BIP44, PSBT/BIP174, coin selection, transaction builder), and crypto (SHA-256, RIPEMD-160, secp256k1, Schnorr/BIP340, Taproot/BIP341/BIP342). Pure logic with no I/O.
+- **abtc-ports** — Trait definitions for storage, mempool, wallet, mining, network, and RPC. No implementations.
+- **abtc-adapters** — In-memory implementations of all port traits. Suitable for testing and lightweight usage.
+- **abtc-application** — Services and use cases: chain state management, P2P message processing, block templates, mining, fee estimation, mempool acceptance, compact blocks (BIP152), download scheduling, peer scoring, orphan pool, transaction rebroadcast, RPC handlers, and chain event notifications.
+- **abtc-infrastructure** — Top-level node composition that wires everything together.
+
+See [CRATES.md](CRATES.md) for a detailed guide on which crate to depend on for your use case.
 
 ## What's Implemented
 
@@ -67,15 +69,15 @@ The five crates, from innermost to outermost:
 612 tests across all crates, all passing with zero warnings.
 
 ```
-btc-domain                266 tests
-btc-application (unit)    178 tests
-btc-application (integ)    20 tests
-btc-adapters               76 tests
-btc-infrastructure         10 tests
-block_validation_tests     16 tests
-tx_validation_tests        34 tests
-script_tests                8 tests
-benchmarks                  4 tests
+abtc-domain                266 tests
+abtc-application (unit)    178 tests
+abtc-application (integ)    20 tests
+abtc-adapters               76 tests
+abtc-infrastructure         10 tests
+block_validation_tests      16 tests
+tx_validation_tests         34 tests
+script_tests                 8 tests
+benchmarks                   4 tests
 ```
 
 ## Building and Testing

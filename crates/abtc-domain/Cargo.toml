@@ -1,0 +1,24 @@
+[package]
+name = "abtc-domain"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Agentic-Bitcoin domain logic — types, consensus rules, script interpreter, crypto, wallet primitives"
+license = "MIT"
+repository = "https://github.com/casey-bowman/agentic-bitcoin"
+homepage = "https://github.com/casey-bowman/agentic-bitcoin"
+keywords = ["bitcoin", "agentic", "clean-architecture", "hexagonal", "ports-and-adapters"]
+categories = ["cryptography::cryptocurrencies"]
+
+[dependencies]
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+ripemd = "0.1"
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+secp256k1 = { version = "0.29", features = ["global-context", "rand-std"] }
+rand = "0.8"
+
+[dev-dependencies]
+serde_json = "1.0"
