@@ -4,7 +4,7 @@
 
 ### Amount (Satoshis)
 ```rust
-use btc_domain::*;
+use abtc_domain::*;
 
 // Create amounts
 let one_btc = Amount::from_sat(COIN);  // 100_000_000 satoshis
@@ -22,6 +22,8 @@ assert!(!Amount::from_sat(-1).is_money_range());
 
 ### Hashes
 ```rust
+use abtc_domain::*;
+
 // Hash256 - Base hash type
 let hash = Hash256::from_hex("abc123...")?;
 println!("{}", hash.to_hex_reversed());  // Display format
@@ -40,6 +42,8 @@ let tx_hash = hash256(data);
 ### Transaction
 
 ```rust
+use abtc_domain::*;
+
 // Create a transaction
 let input = TxIn::final_input(
     OutPoint::new(Txid::zero(), 0),
@@ -70,6 +74,8 @@ assert_eq!(tx.total_output_value().as_sat(), 100_000);
 
 ### Coinbase Transaction
 ```rust
+use abtc_domain::*;
+
 let coinbase = Transaction::coinbase(
     1,  // height
     ScriptBuilder::new()
@@ -89,6 +95,8 @@ assert!(coinbase.is_coinbase());
 ### Block
 
 ```rust
+use abtc_domain::*;
+
 let header = BlockHeader::new(
     1,                           // version
     BlockHash::zero(),           // prev block hash
@@ -110,6 +118,8 @@ assert!(block.verify_merkle_root());
 
 ### Pattern Recognition
 ```rust
+use abtc_domain::*;
+
 let script = /* some script */;
 
 if script.is_p2pkh() {
@@ -129,7 +139,9 @@ if script.is_p2pkh() {
 
 ### Building Scripts
 ```rust
-// Simple script
+use abtc_domain::*;
+
+// P2PKH script
 let script = ScriptBuilder::new()
     .push_opcode(Opcodes::OP_DUP)
     .push_opcode(Opcodes::OP_HASH160)
@@ -138,13 +150,13 @@ let script = ScriptBuilder::new()
     .push_opcode(Opcodes::OP_CHECKSIG)
     .build();
 
-// Script with data
+// OP_RETURN data output
 let data_script = ScriptBuilder::new()
     .push_opcode(Opcodes::OP_RETURN)
     .push_slice(b"my application data")
     .build();
 
-// Script with integers
+// Numeric script
 let numeric_script = ScriptBuilder::new()
     .push_int(1)
     .push_int(2)
@@ -152,9 +164,40 @@ let numeric_script = ScriptBuilder::new()
     .build();
 ```
 
+### Script Execution
+```rust
+use abtc_domain::*;
+
+// Execute a script with the interpreter
+let script_pubkey = /* P2PKH script */;
+let script_sig = /* signature + pubkey push */;
+
+let result = verify_script(
+    &script_sig,
+    &script_pubkey,
+    &ScriptFlags::standard(),
+    &NoSigChecker,
+);
+
+match result {
+    Ok(()) => println!("Script verified"),
+    Err(e) => println!("Script error: {:?}", e),
+}
+
+// With witness data (SegWit)
+let witness = Witness::from(vec![signature, pubkey]);
+let result = verify_script_with_witness(
+    &script_sig,
+    &script_pubkey,
+    &witness,
+    &ScriptFlags::standard(),
+    &checker,
+);
+```
+
 ### Script Iteration
 ```rust
-use btc_domain::script::ScriptInstruction;
+use abtc_domain::script::ScriptInstruction;
 
 for instruction in script.instructions() {
     match instruction {
@@ -175,6 +218,8 @@ for instruction in script.instructions() {
 
 ### Network Configuration
 ```rust
+use abtc_domain::*;
+
 // Get parameters for mainnet
 let mainnet = ConsensusParams::mainnet();
 assert_eq!(mainnet.subsidy_halving_interval, 210_000);
@@ -197,6 +242,8 @@ let params = ConsensusParams::for_network(Network::Mainnet);
 
 ### Block Subsidy
 ```rust
+use abtc_domain::*;
+
 let params = ConsensusParams::mainnet();
 
 // Height 0-209,999: 50 BTC
@@ -216,7 +263,8 @@ assert_eq!(params.get_block_subsidy(64 * 210_000), 0);
 
 ### Transaction Validation
 ```rust
-use btc_domain::consensus::rules::check_transaction;
+use abtc_domain::*;
+use abtc_domain::consensus::rules::check_transaction;
 
 match check_transaction(&tx) {
     Ok(_) => println!("Transaction is valid"),
@@ -232,7 +280,8 @@ match check_transaction(&tx) {
 
 ### Block Validation
 ```rust
-use btc_domain::consensus::rules::check_block;
+use abtc_domain::*;
+use abtc_domain::consensus::rules::check_block;
 
 let params = ConsensusParams::mainnet();
 
@@ -252,6 +301,8 @@ match check_block(&block, &params) {
 
 ### Network Setup
 ```rust
+use abtc_domain::*;
+
 let chain_params = ChainParams::mainnet();
 
 assert_eq!(chain_params.magic_bytes, [0xf9, 0xbe, 0xb4, 0xd9]);
@@ -271,6 +322,8 @@ assert_eq!(testnet.rpc_port, 18332);
 
 ### Genesis Block
 ```rust
+use abtc_domain::*;
+
 let chain_params = ChainParams::mainnet();
 let genesis = chain_params.genesis_block();
 
@@ -281,6 +334,8 @@ println!("Timestamp: {}", genesis.header.time);
 ## Witness Data (SegWit)
 
 ```rust
+use abtc_domain::*;
+
 let mut witness = Witness::new();
 assert!(witness.is_empty());
 
@@ -311,11 +366,140 @@ let weight = tx.compute_weight();
 let vsize = tx.compute_vsize();
 ```
 
+## Cryptography
+
+### Signature Verification
+```rust
+use abtc_domain::*;
+use abtc_domain::crypto::signing::TransactionSignatureChecker;
+
+// ECDSA verification (legacy and SegWit v0)
+let checker = TransactionSignatureChecker::new(&tx, input_index, amount);
+let valid = verify_ecdsa(&checker, &signature, &pubkey, &sighash_type);
+
+// SegWit v0 with BIP143 sighash
+let checker = TransactionSignatureChecker::new_witness_v0(&tx, input_index, amount);
+```
+
+### Schnorr Signatures (BIP340)
+```rust
+use abtc_domain::crypto::schnorr;
+
+// Verify a BIP340 Schnorr signature
+let valid = schnorr::verify_schnorr(&signature, &message, &pubkey);
+```
+
+### Taproot (BIP341/342)
+```rust
+use abtc_domain::crypto::taproot;
+
+// Compute a taproot output key from an internal key and merkle root
+let output_key = taproot::taproot_output_key(&internal_key, merkle_root.as_ref());
+
+// Verify a taproot control block proof
+let valid = taproot::verify_taproot_commitment(
+    &output_key,
+    &leaf_script,
+    &control_block,
+);
+```
+
+## Wallet
+
+### HD Key Derivation (BIP32)
+```rust
+use abtc_domain::wallet::keys::{ExtendedPrivKey, ExtendedPubKey};
+
+// Generate a master key from seed
+let master = ExtendedPrivKey::from_seed(&seed)?;
+
+// Derive child keys (BIP44 path: m/44'/0'/0'/0/0)
+let account = master
+    .derive_child(44 | 0x80000000)?   // 44' (hardened)
+    .derive_child(0 | 0x80000000)?    // 0'  (Bitcoin)
+    .derive_child(0 | 0x80000000)?;   // 0'  (first account)
+
+let external = account.derive_child(0)?;  // external chain
+let first_key = external.derive_child(0)?; // first address
+
+// Get the public key
+let pubkey = first_key.to_extended_pub();
+```
+
+### Address Generation
+```rust
+use abtc_domain::wallet::address::{self, AddressType};
+use abtc_domain::consensus::Network;
+
+// Generate addresses for different types
+let p2pkh = address::create_address(&pubkey, AddressType::P2pkh, Network::Mainnet)?;
+let p2wpkh = address::create_address(&pubkey, AddressType::P2wpkh, Network::Mainnet)?;
+let p2tr = address::create_address(&pubkey, AddressType::P2tr, Network::Mainnet)?;
+```
+
+### Coin Selection
+```rust
+use abtc_domain::wallet::coin_selection::{CoinSelector, SelectionStrategy};
+
+let selector = CoinSelector::new(SelectionStrategy::BranchAndBound);
+let selected = selector.select(&available_utxos, target_amount, fee_rate)?;
+```
+
+### PSBT (BIP174)
+```rust
+use abtc_domain::wallet::psbt::Psbt;
+
+// Create a PSBT from an unsigned transaction
+let psbt = Psbt::from_unsigned_tx(unsigned_tx)?;
+
+// Add input metadata (UTXO, scripts, derivation paths)
+// Sign with available keys
+// Finalize and extract the signed transaction
+let signed_tx = psbt.finalize()?.extract_tx()?;
+```
+
+### Output Descriptors
+```rust
+use abtc_domain::wallet::descriptors::descriptor::OutputDescriptor;
+
+// Parse a descriptor string
+let desc = OutputDescriptor::parse("wpkh([fingerprint/84'/0'/0']xpub.../0/*)")?;
+
+// Derive a script pubkey at index 0
+let script = desc.script_pubkey(0)?;
+```
+
+## Policy
+
+### Replace-by-Fee (BIP125)
+```rust
+use abtc_domain::policy::rbf::RbfPolicy;
+
+// Check if a replacement transaction satisfies BIP125 rules
+let result = RbfPolicy::check_replacement(
+    &new_tx,
+    &conflicting_txs,
+    &mempool_info,
+);
+```
+
+## Compact Block Filters (BIP157/158)
+
+```rust
+use abtc_domain::filters::block_filter::BlockFilter;
+
+// Build a filter for a block
+let filter = BlockFilter::build_basic_filter(&block)?;
+
+// Test whether a script matches the filter
+let maybe_match = filter.match_any(&query_scripts, &block_hash)?;
+```
+
 ## Complete Example: Create and Validate a Transaction
 
 ```rust
-use btc_domain::*;
-use btc_domain::consensus::rules::check_transaction;
+use abtc_domain::*;
+use abtc_domain::consensus::rules::check_transaction;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create input

@@ -2,7 +2,7 @@
 
 ## Current Approach
 
-The test suite (995+ tests, 0 failures) is organised into three layers that reflect the hexagonal architecture.
+The test suite (1,103 tests, 0 failures) is organised into three layers that reflect the hexagonal architecture.
 
 ### Unit tests (inline `#[cfg(test)]` modules)
 
