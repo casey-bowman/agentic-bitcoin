@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "abtc-adapters"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "abtc-domain",
  "abtc-ports",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "abtc-application"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "abtc-adapters",
  "abtc-domain",
@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "abtc-domain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chacha20poly1305",
  "hex",
@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "abtc-infrastructure"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "abtc-adapters",
  "abtc-application",
@@ -74,7 +74,7 @@ dependencies = [
 
 [[package]]
 name = "abtc-ports"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "abtc-domain",
  "async-trait",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "agentic-bitcoin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "abtc-adapters",
  "abtc-application",
