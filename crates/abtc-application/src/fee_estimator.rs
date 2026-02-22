@@ -68,8 +68,8 @@ struct BlockFeeRecord {
 
 /// The fee estimator.
 ///
-/// Call [`process_block`] every time a new block is connected, and
-/// [`estimate_fee`] to get a fee-rate prediction for a given target.
+/// Call `process_block` every time a new block is connected, and
+/// `estimate_fee` to get a fee-rate prediction for a given target.
 #[derive(Debug, Clone)]
 pub struct FeeEstimator {
     /// Exponentially-spaced fee-rate buckets.
@@ -206,7 +206,7 @@ impl FeeEstimator {
 
     /// Estimate the fee rate (sat/vB) needed to confirm within `target_blocks`.
     ///
-    /// Returns the minimum bucket lower-bound where at least [`SUCCESS_THRESHOLD`]
+    /// Returns the minimum bucket lower-bound where at least `SUCCESS_THRESHOLD`
     /// of tracked transactions confirmed within `target_blocks`.
     /// Falls back to the median of recent blocks if insufficient data.
     pub fn estimate_fee(&self, target_blocks: u32) -> f64 {

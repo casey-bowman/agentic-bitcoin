@@ -23,14 +23,14 @@ use std::collections::HashMap;
 /// Metadata tracked for each known block header.
 #[derive(Debug, Clone)]
 pub struct BlockIndexEntry {
-    /// The block header
+    /// The block header.
     pub header: BlockHeader,
-    /// Height of this block
+    /// Height of this block.
     pub height: u32,
-    /// Cumulative proof-of-work up to and including this block
-    /// Stored as a u128 to avoid overflow for high-difficulty chains
+    /// Cumulative proof-of-work up to and including this block.
+    /// Stored as a u128 to avoid overflow for high-difficulty chains.
     pub chain_work: u128,
-    /// Validation status
+    /// Validation status.
     pub status: BlockValidationStatus,
 }
 

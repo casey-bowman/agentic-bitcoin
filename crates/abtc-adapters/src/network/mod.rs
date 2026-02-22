@@ -8,7 +8,7 @@
 //! - Misbehaviour scoring with automatic banning
 //!
 //! The network layer uses Bitcoin protocol message framing:
-//!   [4-byte magic][12-byte command][4-byte payload length][4-byte checksum][payload]
+//!   `[4-byte magic][12-byte command][4-byte payload length][4-byte checksum][payload]`
 //!
 //! ## BIP324 v2 encrypted transport
 //!

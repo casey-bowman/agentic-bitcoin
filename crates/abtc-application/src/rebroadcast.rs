@@ -52,6 +52,8 @@ pub enum RebroadcastAction {
 }
 
 /// The rebroadcast manager.
+///
+/// Tracks wallet transactions and periodically re-announces them to the network.
 pub struct RebroadcastManager {
     /// Tracked transactions, keyed by txid.
     entries: HashMap<Txid, RebroadcastEntry>,

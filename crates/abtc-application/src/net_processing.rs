@@ -56,10 +56,10 @@ const MAX_KNOWN_ADDRESSES: usize = 10_000;
 /// Maximum age of an address before we discard it (3 hours in seconds)
 const MAX_ADDR_AGE: u32 = 3 * 60 * 60;
 
-/// State of the handshake with a peer.
+/// State of the P2P handshake with a peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandshakeState {
-    /// We've connected; waiting to send or receive Version.
+    /// We've connected; waiting to send or receive Version message.
     AwaitingVersion,
     /// We've received their Version and sent ours + Verack; waiting for their Verack.
     AwaitingVerack,
@@ -67,31 +67,31 @@ pub enum HandshakeState {
     Complete,
 }
 
-/// Sync state for a single peer
+/// Sync state for a single peer.
 #[derive(Debug, Clone)]
 struct PeerSyncState {
     /// Peer info (used for logging and protocol checks).
     info: PeerInfo,
-    /// State of the P2P handshake
+    /// State of the P2P handshake.
     handshake: HandshakeState,
-    /// Whether we've sent a getheaders to this peer and are waiting for a response
+    /// Whether we've sent a getheaders to this peer and are waiting for a response.
     headers_sync_pending: bool,
-    /// Blocks we've requested from this peer
+    /// Blocks we've requested from this peer.
     blocks_in_flight: HashSet<BlockHash>,
-    /// The last header hash we received from this peer
+    /// The last header hash we received from this peer.
     last_header_received: Option<BlockHash>,
 }
 
-/// Current state of the sync process
+/// Current state of the blockchain sync process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncState {
-    /// Initial state — no peers connected
+    /// Initial state — no peers connected.
     Idle,
-    /// Downloading headers from peers (IBD phase 1)
+    /// Downloading headers from peers (IBD phase 1).
     HeaderSync,
-    /// Downloading blocks for validated headers (IBD phase 2)
+    /// Downloading blocks for validated headers (IBD phase 2).
     BlockSync,
-    /// Fully synced — processing new blocks as they arrive
+    /// Fully synced — processing new blocks as they arrive.
     Synced,
 }
 

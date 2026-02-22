@@ -11,6 +11,7 @@ pub struct SendTransaction {
 }
 
 impl SendTransaction {
+    /// Create a new command to submit a transaction.
     pub fn new(tx: Transaction) -> Self {
         SendTransaction { tx }
     }
@@ -23,6 +24,7 @@ pub struct SubmitBlock {
 }
 
 impl SubmitBlock {
+    /// Create a new command to submit a mined block.
     pub fn new(block: Block) -> Self {
         SubmitBlock { block }
     }
@@ -35,6 +37,7 @@ pub struct MineBlock {
 }
 
 impl MineBlock {
+    /// Create a new command to mine a block to a given address.
     pub fn new(coinbase_address: String) -> Self {
         MineBlock { coinbase_address }
     }
@@ -48,6 +51,7 @@ pub struct UpdateChainTip {
 }
 
 impl UpdateChainTip {
+    /// Create a new command to update the chain tip.
     pub fn new(block_hash: String, height: u32) -> Self {
         UpdateChainTip { block_hash, height }
     }

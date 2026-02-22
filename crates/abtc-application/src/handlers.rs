@@ -22,6 +22,7 @@ pub struct BlockchainRpcHandler {
 }
 
 impl BlockchainRpcHandler {
+    /// Create a new blockchain RPC handler.
     pub fn new(
         blockchain: Arc<BlockchainService>,
         mempool: Arc<MempoolService>,
@@ -395,6 +396,7 @@ pub struct WalletRpcHandler {
 }
 
 impl WalletRpcHandler {
+    /// Create a new wallet RPC handler.
     pub fn new(wallet: Arc<dyn abtc_ports::WalletPort>) -> Self {
         WalletRpcHandler { wallet }
     }
@@ -492,6 +494,7 @@ pub struct MiningRpcHandler {
 }
 
 impl MiningRpcHandler {
+    /// Create a new mining RPC handler.
     pub fn new(mining: Arc<MiningService>) -> Self {
         MiningRpcHandler { mining }
     }

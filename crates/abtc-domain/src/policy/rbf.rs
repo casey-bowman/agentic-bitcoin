@@ -4,7 +4,7 @@
 //! that spends one or more of the same inputs, provided the replacement pays
 //! a higher fee rate and absolute fee.
 //!
-//! See: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki
+//! See: <https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki>
 
 use crate::primitives::{Amount, Sequence, Transaction, Txid};
 

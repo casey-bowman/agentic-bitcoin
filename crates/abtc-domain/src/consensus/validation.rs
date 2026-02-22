@@ -18,44 +18,63 @@ pub enum ValidationState {
     Error,
 }
 
-/// Validation error codes
+/// Validation error codes for transactions and blocks
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValidationError {
-    // Transaction errors
+    /// Transaction is empty (has no inputs or outputs)
     TxEmpty,
+    /// Transaction has no inputs (non-coinbase)
     TxInputsEmpty,
+    /// Transaction has no outputs
     TxOutputsEmpty,
+    /// Transaction has outputs with negative values
     TxOutputsNegative,
+    /// Sum of transaction outputs exceeds maximum money supply
     TxOutputsTooLarge,
+    /// Transaction has duplicate inputs (same outpoint spent twice)
     TxInputsDuplicate,
+    /// Coinbase transaction script is too small (< 2 bytes)
     TxCoinbaseScriptSizeTooSmall,
+    /// Coinbase transaction script is too large (> 100 bytes)
     TxCoinbaseScriptSizeTooLarge,
+    /// Transaction size exceeds maximum allowed (1 MB = 4M weight units)
     TxSizeTooLarge,
 
-    // Block errors
+    /// Block header does not validate (e.g., invalid version or fields)
     BlockHeaderInvalid,
+    /// Block proof-of-work does not meet target difficulty
     BlockProofOfWorkInvalid,
+    /// Block merkle root does not match computed value from transactions
     BlockMerkleRootInvalid,
+    /// Block size exceeds maximum (1 MB)
     BlockSizeTooLarge,
+    /// Block weight exceeds maximum (4 MB weight units)
     BlockWeightTooLarge,
+    /// Block has no transactions
     BlockNoTransactions,
+    /// First transaction in block is not a coinbase
     BlockCoinbaseNotFirst,
+    /// Block has more than one coinbase transaction
     BlockCoinbaseMultiple,
+    /// Block signature operations exceed limit (20,000 per block)
     BlockSigopsTooCostly,
 
-    // Locktime/sequence errors
+    /// Locktime validation failed (e.g., sequence or locktime constraints)
     LockTimeInvalid,
+    /// Sequence number validation failed
     SequenceInvalid,
 
-    // Script errors
+    /// Script execution failed
     ScriptInvalid,
+    /// Script push data size is invalid
     PushDataSizeInvalid,
 
-    // Witness errors
+    /// Witness data is invalid or malformed
     WitnessInvalid,
+    /// Witness is missing required signatures
     WitnessMissingSignature,
 
-    // Generic errors
+    /// Unknown or unclassified validation error
     Unknown,
 }
 

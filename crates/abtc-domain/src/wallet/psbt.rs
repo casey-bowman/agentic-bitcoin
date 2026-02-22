@@ -406,8 +406,8 @@ impl Psbt {
     /// Finalize an input by converting its partial signatures into
     /// a final scriptSig and/or scriptWitness.
     ///
-    /// For P2WPKH: creates a witness with [signature, pubkey].
-    /// For P2PKH: creates a scriptSig with <sig> <pubkey>.
+    /// For P2WPKH: creates a witness with \[signature, pubkey\].
+    /// For P2PKH: creates a scriptSig with `sig` `pubkey`.
     ///
     /// Returns an error if the input has no partial signatures.
     pub fn finalize_input(&mut self, input_index: usize) -> Result<(), PsbtError> {

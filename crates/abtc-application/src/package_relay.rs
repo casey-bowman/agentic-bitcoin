@@ -46,14 +46,14 @@ pub struct PackageResult {
     pub package_fee_rate: f64,
 }
 
-/// Info about a single accepted transaction within a package.
+/// Information about a single accepted transaction within a package.
 #[derive(Debug, Clone)]
 pub struct PackageAcceptedTx {
     /// Transaction ID.
     pub txid: Txid,
-    /// Individual fee.
+    /// Individual fee in satoshis.
     pub fee: Amount,
-    /// Individual virtual size.
+    /// Individual virtual size in bytes.
     pub vsize: u32,
 }
 

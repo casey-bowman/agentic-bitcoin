@@ -72,6 +72,9 @@ pub enum AddResult {
 }
 
 /// The address manager / peer address book.
+///
+/// Manages a database of known peer addresses, categorized into "tried" and "new" tables
+/// to prevent eclipse attacks and provide robust peer discovery.
 pub struct AddressManager {
     /// All known addresses, keyed by socket address.
     addresses: HashMap<SocketAddr, AddressInfo>,

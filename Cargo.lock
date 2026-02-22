@@ -96,7 +96,11 @@ dependencies = [
 name = "agentic-bitcoin"
 version = "0.1.0"
 dependencies = [
+ "abtc-adapters",
+ "abtc-application",
+ "abtc-domain",
  "abtc-infrastructure",
+ "abtc-ports",
  "tokio",
 ]
 

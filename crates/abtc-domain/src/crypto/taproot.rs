@@ -15,10 +15,10 @@
 //!
 //! ## Spending Paths
 //!
-//! **Key path**: witness = [signature]
+//! **Key path**: witness = \[signature\]
 //!   Verify the Schnorr signature against Q (the output key) directly.
 //!
-//! **Script path**: witness = [script_args..., script, control_block]
+//! **Script path**: witness = \[script_args..., script, control_block\]
 //!   1. Parse the control block (leaf version + internal key + merkle path)
 //!   2. Compute the leaf hash from the script
 //!   3. Verify the merkle proof against the internal key to get Q

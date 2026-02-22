@@ -34,17 +34,17 @@ const MAX_BLOCKS_PER_PEER: usize = 16;
 /// A single in-flight block request.
 #[derive(Debug, Clone)]
 pub struct BlockRequest {
-    /// The hash of the block being requested.
+    /// The hash of the block being requested (32 bytes).
     pub block_hash: [u8; 32],
     /// Peer ID that was assigned this request.
     pub peer_id: u64,
     /// Unix timestamp when the request was sent.
     pub requested_at: u64,
-    /// Expected block height (for ordering).
+    /// Expected block height (for ordering and reorg detection).
     pub height: u32,
 }
 
-/// Per-peer download statistics.
+/// Per-peer download statistics and performance metrics.
 #[derive(Debug, Clone)]
 pub struct PeerDownloadStats {
     /// Total blocks successfully delivered.
@@ -92,22 +92,35 @@ impl PeerDownloadStats {
     }
 }
 
-/// Action returned by the scheduler.
+/// Action returned by the scheduler after checking download state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchedulerAction {
     /// Request this block from the specified peer.
-    RequestBlock { peer_id: u64, block_hash: [u8; 32] },
+    RequestBlock {
+        /// Peer ID to request from.
+        peer_id: u64,
+        /// Block hash to request.
+        block_hash: [u8; 32],
+    },
     /// A block request timed out — penalize the peer.
-    TimeoutPeer { peer_id: u64, block_hash: [u8; 32] },
+    TimeoutPeer {
+        /// Peer ID that missed the deadline.
+        peer_id: u64,
+        /// Block hash that timed out.
+        block_hash: [u8; 32],
+    },
     /// The chain tip appears stale — trigger re-sync with any available peer.
     StaleTipDetected,
 }
 
 /// The block download scheduler.
+///
+/// Tracks in-flight block requests with timeouts and maintains per-peer statistics.
+/// Detects stale tips and helps select the best peer for future requests.
 pub struct DownloadScheduler {
     /// Currently in-flight requests, keyed by block hash.
     in_flight: HashMap<[u8; 32], BlockRequest>,
-    /// Per-peer download statistics.
+    /// Per-peer download statistics and performance metrics.
     peer_stats: HashMap<u64, PeerDownloadStats>,
     /// Unix timestamp of the last block successfully connected.
     last_block_time: u64,

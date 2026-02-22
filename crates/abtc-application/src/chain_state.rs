@@ -99,10 +99,17 @@ impl From<ConnectBlockError> for ChainStateError {
 #[derive(Debug)]
 pub enum ProcessBlockResult {
     /// The block extended the active chain (normal case).
-    Connected { hash: BlockHash, height: u32 },
+    Connected {
+        /// Block hash.
+        hash: BlockHash,
+        /// Block height.
+        height: u32,
+    },
     /// The block triggered a reorganisation to a better chain.
     Reorged {
+        /// Block hash.
         hash: BlockHash,
+        /// Final block height after reorg.
         height: u32,
         /// Number of blocks disconnected from the old chain.
         disconnected: u32,
@@ -110,9 +117,17 @@ pub enum ProcessBlockResult {
         connected: u32,
     },
     /// The block was accepted but is on a side chain (less work than active).
-    SideChain { hash: BlockHash, height: u32 },
+    SideChain {
+        /// Block hash.
+        hash: BlockHash,
+        /// Block height.
+        height: u32,
+    },
     /// The block was already known.
-    AlreadyKnown { hash: BlockHash },
+    AlreadyKnown {
+        /// Block hash.
+        hash: BlockHash,
+    },
 }
 
 // ── Chain state ─────────────────────────────────────────────────────

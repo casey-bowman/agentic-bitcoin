@@ -31,76 +31,76 @@ pub enum Terminal {
     /// `pk_k(key)` — push key, OP_CHECKSIG  (type K)
     PkK(PublicKey),
 
-    /// `pk_h(hash)` — OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG  (type K)
+    /// `pk_h(hash)` — OP_DUP OP_HASH160 `hash` OP_EQUALVERIFY OP_CHECKSIG  (type K)
     PkH([u8; 20]),
 
-    /// `older(n)` — <n> OP_CHECKSEQUENCEVERIFY  (type B)
+    /// `older(n)` — `n` OP_CHECKSEQUENCEVERIFY  (type B)
     Older(u32),
 
-    /// `after(n)` — <n> OP_CHECKLOCKTIMEVERIFY  (type B)
+    /// `after(n)` — `n` OP_CHECKLOCKTIMEVERIFY  (type B)
     After(u32),
 
-    /// `sha256(h)` — OP_SIZE <32> OP_EQUALVERIFY OP_SHA256 <hash> OP_EQUAL  (type B)
+    /// `sha256(h)` — OP_SIZE `32` OP_EQUALVERIFY OP_SHA256 `hash` OP_EQUAL  (type B)
     Sha256([u8; 32]),
 
-    /// `hash256(h)` — OP_SIZE <32> OP_EQUALVERIFY OP_HASH256 <hash> OP_EQUAL  (type B)
+    /// `hash256(h)` — OP_SIZE `32` OP_EQUALVERIFY OP_HASH256 `hash` OP_EQUAL  (type B)
     Hash256([u8; 32]),
 
-    /// `ripemd160(h)` — OP_SIZE <32> OP_EQUALVERIFY OP_RIPEMD160 <hash> OP_EQUAL  (type B)
+    /// `ripemd160(h)` — OP_SIZE `32` OP_EQUALVERIFY OP_RIPEMD160 `hash` OP_EQUAL  (type B)
     Ripemd160([u8; 20]),
 
-    /// `hash160(h)` — OP_SIZE <32> OP_EQUALVERIFY OP_HASH160 <hash> OP_EQUAL  (type B)
+    /// `hash160(h)` — OP_SIZE `32` OP_EQUALVERIFY OP_HASH160 `hash` OP_EQUAL  (type B)
     Hash160([u8; 20]),
 
     // ── Combinators ───────────────────────────────────────────────────
-    /// `and_v(X,Y)` — [X] [Y]  (V ∧ B/K/V)
+    /// `and_v(X,Y)` — \[X\] \[Y\]  (V ∧ B/K/V)
     AndV(Box<Miniscript>, Box<Miniscript>),
 
-    /// `and_b(X,Y)` — [X] [Y] OP_BOOLAND  (B ∧ W → B)
+    /// `and_b(X,Y)` — \[X\] \[Y\] OP_BOOLAND  (B ∧ W → B)
     AndB(Box<Miniscript>, Box<Miniscript>),
 
-    /// `or_b(X,Y)` — [X] [Y] OP_BOOLOR  (Bd ∧ Wd → Bdu)
+    /// `or_b(X,Y)` — \[X\] \[Y\] OP_BOOLOR  (Bd ∧ Wd → Bdu)
     OrB(Box<Miniscript>, Box<Miniscript>),
 
-    /// `or_c(X,Y)` — [X] OP_NOTIF [Y] OP_ENDIF  (Bdu ∧ V → B)
+    /// `or_c(X,Y)` — \[X\] OP_NOTIF \[Y\] OP_ENDIF  (Bdu ∧ V → B)
     OrC(Box<Miniscript>, Box<Miniscript>),
 
-    /// `or_d(X,Y)` — [X] OP_IFDUP OP_NOTIF [Y] OP_ENDIF  (Bdu ∧ B → B)
+    /// `or_d(X,Y)` — \[X\] OP_IFDUP OP_NOTIF \[Y\] OP_ENDIF  (Bdu ∧ B → B)
     OrD(Box<Miniscript>, Box<Miniscript>),
 
-    /// `or_i(X,Y)` — OP_IF [X] OP_ELSE [Y] OP_ENDIF
+    /// `or_i(X,Y)` — OP_IF \[X\] OP_ELSE \[Y\] OP_ENDIF
     OrI(Box<Miniscript>, Box<Miniscript>),
 
-    /// `thresh(k, X1, X2, ...)` — [X1] [X2] OP_ADD ... <k> OP_EQUAL
+    /// `thresh(k, X1, X2, ...)` — \[X1\] \[X2\] OP_ADD ... `k` OP_EQUAL
     Thresh(usize, Vec<Miniscript>),
 
-    /// `multi(k, key1, key2, ...)` — <k> <keys...> <n> OP_CHECKMULTISIG  (type B)
+    /// `multi(k, key1, key2, ...)` — `k` `keys...` `n` OP_CHECKMULTISIG  (type B)
     Multi(usize, Vec<PublicKey>),
 
     /// `multi_a(k, key1, key2, ...)` — Tapscript CHECKSIGADD-based multi  (type B)
-    /// <key1> OP_CHECKSIG <key2> OP_CHECKSIGADD ... <k> OP_NUMEQUAL
+    /// `key1` OP_CHECKSIG `key2` OP_CHECKSIGADD ... `k` OP_NUMEQUAL
     MultiA(usize, Vec<PublicKey>),
 
     // ── Wrappers (single-child type converters) ───────────────────────
-    /// `a:X` — OP_TOALTSTACK [X] OP_FROMALTSTACK  (B → W)
+    /// `a:X` — OP_TOALTSTACK \[X\] OP_FROMALTSTACK  (B → W)
     Alt(Box<Miniscript>),
 
-    /// `s:X` — OP_SWAP [X]  (Bo → W)
+    /// `s:X` — OP_SWAP \[X\]  (Bo → W)
     Swap(Box<Miniscript>),
 
-    /// `c:X` — [X] OP_CHECKSIG  (K → B)
+    /// `c:X` — \[X\] OP_CHECKSIG  (K → B)
     Check(Box<Miniscript>),
 
-    /// `d:X` — OP_DUP OP_IF [X] OP_ENDIF  (V → Bdu)
+    /// `d:X` — OP_DUP OP_IF \[X\] OP_ENDIF  (V → Bdu)
     DupIf(Box<Miniscript>),
 
-    /// `v:X` — [X] OP_VERIFY (or merged EQUALVERIFY, etc.)  (B → V)
+    /// `v:X` — \[X\] OP_VERIFY (or merged EQUALVERIFY, etc.)  (B → V)
     Verify(Box<Miniscript>),
 
-    /// `j:X` — OP_SIZE OP_0NOTEQUAL OP_IF [X] OP_ENDIF  (Bn → Bd)
+    /// `j:X` — OP_SIZE OP_0NOTEQUAL OP_IF \[X\] OP_ENDIF  (Bn → Bd)
     NonZero(Box<Miniscript>),
 
-    /// `n:X` — [X] OP_0NOTEQUAL  (B → Bu)
+    /// `n:X` — \[X\] OP_0NOTEQUAL  (B → Bu)
     ZeroNotEqual(Box<Miniscript>),
 }
 

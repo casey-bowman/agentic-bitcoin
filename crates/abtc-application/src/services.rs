@@ -393,7 +393,7 @@ pub struct MempoolService {
 }
 
 impl MempoolService {
-    /// Create a new mempool service
+    /// Create a new mempool service.
     pub fn new(mempool: Arc<dyn MempoolPort>, chain_state: Arc<dyn ChainStateStore>) -> Self {
         MempoolService {
             mempool,
@@ -499,11 +499,14 @@ impl MiningService {
     }
 }
 
-/// Information about the current chain state
+/// Information about the current chain state.
 #[derive(Clone, Debug)]
 pub struct ChainInfo {
+    /// Hash of the best (most-work) block.
     pub best_block_hash: BlockHash,
+    /// Height of the best block (0 for genesis).
     pub height: u32,
+    /// Total number of blocks including genesis.
     pub blocks: u32,
 }
 

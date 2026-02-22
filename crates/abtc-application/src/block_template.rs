@@ -28,7 +28,8 @@ const COINBASE_WEIGHT_RESERVE: u32 = 4_000;
 /// Block template assembler.
 ///
 /// Holds references to the chain state (for tip/height/bits) and mempool
-/// (for transaction selection). Implements `BlockTemplateProvider`.
+/// (for transaction selection). Implements `BlockTemplateProvider` to assemble
+/// block templates from mempool transactions for mining.
 pub struct BlockAssembler {
     chain_state: Arc<dyn ChainStateStore>,
     mempool: Arc<dyn MempoolPort>,

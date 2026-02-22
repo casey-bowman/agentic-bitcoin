@@ -150,7 +150,7 @@ const REKEY_INTERVAL: u32 = 224;
 /// Forward-Secure ChaCha20-Poly1305 AEAD cipher.
 ///
 /// Wraps the standard ChaCha20-Poly1305 AEAD with:
-/// - Automatic re-keying every [`REKEY_INTERVAL`] messages
+/// - Automatic re-keying every `REKEY_INTERVAL` messages
 /// - Nonce derived from an incrementing packet counter
 ///
 /// The 96-bit (12-byte) AEAD nonce is built as:
@@ -282,7 +282,7 @@ impl FSChaCha20Poly1305 {
 /// uses raw ChaCha20 (no Poly1305) because the length is authenticated
 /// implicitly by the AEAD on the full message.
 ///
-/// Re-keys every [`REKEY_INTERVAL`] messages, matching the AEAD cipher.
+/// Re-keys every `REKEY_INTERVAL` messages, matching the AEAD cipher.
 pub struct FSChaCha20 {
     key: [u8; 32],
     packet_counter: u64,
