@@ -20,10 +20,10 @@
 //!
 //! Each coin is serialized as `txid(32) || varint(vout) || compressed_coin`.
 
+use super::coin::{deserialize_utxo, push_varint, read_varint, serialize_utxo};
+use super::muhash::MuHash3072;
 use crate::consensus::connect::UtxoEntry;
 use crate::primitives::{BlockHash, Hash256, OutPoint};
-use super::coin::{serialize_utxo, deserialize_utxo, push_varint, read_varint};
-use super::muhash::MuHash3072;
 
 /// Current snapshot format version.
 const SNAPSHOT_VERSION: u16 = 1;
@@ -265,16 +265,17 @@ impl AssumeUtxoParams {
                 height: 840_000,
                 block_hash: BlockHash::from_hash(Hash256::from_bytes([
                     // 0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5
-                    0xa5, 0x83, 0xda, 0x1c, 0x3f, 0xf2, 0x9b, 0x68,
-                    0x72, 0x48, 0xff, 0x73, 0x78, 0x22, 0xf8, 0xce,
-                    0x48, 0x27, 0x03, 0x3a, 0x28, 0x20, 0x03, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0xa5, 0x83, 0xda, 0x1c, 0x3f, 0xf2, 0x9b, 0x68, 0x72, 0x48, 0xff, 0x73, 0x78,
+                    0x22, 0xf8, 0xce, 0x48, 0x27, 0x03, 0x3a, 0x28, 0x20, 0x03, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 ])),
                 num_coins: 176_629_079,
-                muhash: Hash256::from_bytes([
+                muhash: Hash256::from_bytes(
+                    [
                     // Placeholder — real value from Bitcoin Core
                     0x00; 32
-                ]),
+                ],
+                ),
             },
         ]
     }
@@ -315,13 +316,21 @@ impl std::fmt::Display for SnapshotError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SnapshotError::HeightMismatch { expected, got } => {
-                write!(f, "snapshot height mismatch: expected {}, got {}", expected, got)
+                write!(
+                    f,
+                    "snapshot height mismatch: expected {}, got {}",
+                    expected, got
+                )
             }
             SnapshotError::BlockHashMismatch => {
                 write!(f, "snapshot block hash does not match expected")
             }
             SnapshotError::CoinCountMismatch { expected, got } => {
-                write!(f, "snapshot coin count mismatch: expected {}, got {}", expected, got)
+                write!(
+                    f,
+                    "snapshot coin count mismatch: expected {}, got {}",
+                    expected, got
+                )
             }
             SnapshotError::MuHashMismatch => {
                 write!(f, "snapshot MuHash commitment does not match")
@@ -345,7 +354,7 @@ impl std::error::Error for SnapshotError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::{Amount, Txid, TxOut};
+    use crate::primitives::{Amount, TxOut, Txid};
     use crate::script::Script;
 
     fn make_test_entry(sat: i64, height: u32, is_coinbase: bool) -> UtxoEntry {
@@ -353,10 +362,8 @@ mod tests {
             output: TxOut::new(
                 Amount::from_sat(sat),
                 Script::from_bytes(vec![
-                    0x76, 0xa9, 0x14,
-                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
-                    0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
-                    0x88, 0xac,
+                    0x76, 0xa9, 0x14, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+                    0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x88, 0xac,
                 ]),
             ),
             height,
@@ -372,11 +379,8 @@ mod tests {
                 txid_bytes[1] = ((i >> 8) & 0xFF) as u8;
                 let txid = Txid::from_hash(Hash256::from_bytes(txid_bytes));
                 let outpoint = OutPoint::new(txid, 0);
-                let entry = make_test_entry(
-                    100_000_000 * (i as i64 + 1),
-                    500_000 + i as u32,
-                    i == 0,
-                );
+                let entry =
+                    make_test_entry(100_000_000 * (i as i64 + 1), 500_000 + i as u32, i == 0);
                 (outpoint, entry)
             })
             .collect()
@@ -420,14 +424,20 @@ mod tests {
         assert!(good.validate_against(&params).is_ok());
 
         // Wrong height
-        let bad_height = SnapshotMetadata { height: 999, ..good.clone() };
+        let bad_height = SnapshotMetadata {
+            height: 999,
+            ..good.clone()
+        };
         assert!(matches!(
             bad_height.validate_against(&params),
             Err(SnapshotError::HeightMismatch { .. })
         ));
 
         // Wrong coin count
-        let bad_coins = SnapshotMetadata { num_coins: 999, ..good.clone() };
+        let bad_coins = SnapshotMetadata {
+            num_coins: 999,
+            ..good.clone()
+        };
         assert!(matches!(
             bad_coins.validate_against(&params),
             Err(SnapshotError::CoinCountMismatch { .. })
@@ -441,7 +451,8 @@ mod tests {
         let coins = make_test_coins(5);
         let block_hash = BlockHash::from_hash(Hash256::from_bytes([0xcc; 32]));
 
-        let snapshot = UtxoSnapshot::build(coins.clone(), block_hash, 500_000, [0xf9, 0xbe, 0xb4, 0xd9]);
+        let snapshot =
+            UtxoSnapshot::build(coins.clone(), block_hash, 500_000, [0xf9, 0xbe, 0xb4, 0xd9]);
 
         assert_eq!(snapshot.metadata.height, 500_000);
         assert_eq!(snapshot.metadata.num_coins, 5);
@@ -516,11 +527,10 @@ mod tests {
         let entry = UtxoEntry {
             output: TxOut::new(
                 Amount::from_sat(314_159_265),
-                Script::from_bytes(vec![0xa9, 0x14,
-                    0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11,
-                    0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
-                    0xaa, 0xbb, 0xcc, 0xdd,
-                    0x87]),
+                Script::from_bytes(vec![
+                    0xa9, 0x14, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44,
+                    0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0x87,
+                ]),
             ),
             height: 750_000,
             is_coinbase: true,
@@ -529,9 +539,7 @@ mod tests {
         let outpoint = OutPoint::new(txid, 7);
 
         let coins = vec![(outpoint, entry.clone())];
-        let snapshot = UtxoSnapshot::build(
-            coins, BlockHash::zero(), 750_000, [0; 4],
-        );
+        let snapshot = UtxoSnapshot::build(coins, BlockHash::zero(), 750_000, [0; 4]);
 
         let serialized = snapshot.serialize();
         let deserialized = UtxoSnapshot::deserialize(&serialized).unwrap();

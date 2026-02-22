@@ -24,8 +24,8 @@
 //!   - P2PK (uncompressed) → type 0x04/0x05 + 32-byte x-coordinate
 //!   - Other → (script_len + 6) as varint + raw script bytes
 
-use crate::primitives::{Amount, OutPoint, TxOut, Txid};
 use crate::consensus::connect::UtxoEntry;
+use crate::primitives::{Amount, OutPoint, TxOut, Txid};
 use crate::script::Script;
 
 // ---------------------------------------------------------------------------
@@ -103,7 +103,8 @@ pub fn compress_script(script: &Script) -> CompressedScript {
         && bytes[1] == 0xa9  // OP_HASH160
         && bytes[2] == 0x14  // push 20 bytes
         && bytes[23] == 0x88 // OP_EQUALVERIFY
-        && bytes[24] == 0xac // OP_CHECKSIG
+        && bytes[24] == 0xac
+    // OP_CHECKSIG
     {
         let mut hash = [0u8; 20];
         hash.copy_from_slice(&bytes[3..23]);
@@ -114,7 +115,8 @@ pub fn compress_script(script: &Script) -> CompressedScript {
     if bytes.len() == 23
         && bytes[0] == 0xa9  // OP_HASH160
         && bytes[1] == 0x14  // push 20 bytes
-        && bytes[22] == 0x87 // OP_EQUAL
+        && bytes[22] == 0x87
+    // OP_EQUAL
     {
         let mut hash = [0u8; 20];
         hash.copy_from_slice(&bytes[2..22]);
@@ -125,18 +127,23 @@ pub fn compress_script(script: &Script) -> CompressedScript {
     if bytes.len() == 35
         && bytes[0] == 0x21  // push 33 bytes
         && (bytes[1] == 0x02 || bytes[1] == 0x03)
-        && bytes[34] == 0xac // OP_CHECKSIG
+        && bytes[34] == 0xac
+    // OP_CHECKSIG
     {
         let mut x = [0u8; 32];
         x.copy_from_slice(&bytes[2..34]);
-        return CompressedScript::P2PKCompressed { odd: bytes[1] == 0x03, x };
+        return CompressedScript::P2PKCompressed {
+            odd: bytes[1] == 0x03,
+            x,
+        };
     }
 
     // P2PK uncompressed: <65> <04><x><y> OP_CHECKSIG
     if bytes.len() == 67
         && bytes[0] == 0x41  // push 65 bytes
         && bytes[1] == 0x04
-        && bytes[66] == 0xac // OP_CHECKSIG
+        && bytes[66] == 0xac
+    // OP_CHECKSIG
     {
         let mut x = [0u8; 32];
         x.copy_from_slice(&bytes[2..34]);
@@ -301,7 +308,10 @@ pub fn serialize_utxo(outpoint: &OutPoint, entry: &UtxoEntry) -> Vec<u8> {
 }
 
 /// Deserialize an outpoint-coin pair from a snapshot stream.
-pub fn deserialize_utxo(data: &[u8], offset: usize) -> Result<(OutPoint, UtxoEntry, usize), &'static str> {
+pub fn deserialize_utxo(
+    data: &[u8],
+    offset: usize,
+) -> Result<(OutPoint, UtxoEntry, usize), &'static str> {
     let mut pos = offset;
 
     if pos + 32 > data.len() {
@@ -317,7 +327,10 @@ pub fn deserialize_utxo(data: &[u8], offset: usize) -> Result<(OutPoint, UtxoEnt
     let (coin, n) = CompressedCoin::deserialize(&data[pos..])?;
     pos += n;
 
-    let outpoint = OutPoint::new(Txid::from_hash(crate::primitives::Hash256::from_bytes(txid_bytes)), vout as u32);
+    let outpoint = OutPoint::new(
+        Txid::from_hash(crate::primitives::Hash256::from_bytes(txid_bytes)),
+        vout as u32,
+    );
     let entry = coin.to_utxo_entry();
     Ok((outpoint, entry, pos - offset))
 }
@@ -386,7 +399,11 @@ fn serialize_compressed_script(buf: &mut Vec<u8>, script: &CompressedScript) {
             buf.extend_from_slice(hash);
         }
         CompressedScript::P2PKCompressed { odd, x } => {
-            let tag = if *odd { SCRIPT_TYPE_P2PK_ODD } else { SCRIPT_TYPE_P2PK_EVEN };
+            let tag = if *odd {
+                SCRIPT_TYPE_P2PK_ODD
+            } else {
+                SCRIPT_TYPE_P2PK_EVEN
+            };
             push_varint(buf, tag as u64);
             buf.extend_from_slice(x);
         }
@@ -497,16 +514,16 @@ mod tests {
     fn test_compress_amount_roundtrip() {
         // Test specific known amounts
         let amounts: Vec<u64> = vec![
-            1,            // 1 satoshi
-            100,          // 100 sat
-            1_000,        // 1000 sat
-            10_000,       // 10k sat
-            100_000,      // 100k sat
-            1_000_000,    // 0.01 BTC
-            10_000_000,   // 0.1 BTC
-            100_000_000,  // 1 BTC
-            500_000_000,  // 5 BTC
-            5_000_000_000, // 50 BTC
+            1,                     // 1 satoshi
+            100,                   // 100 sat
+            1_000,                 // 1000 sat
+            10_000,                // 10k sat
+            100_000,               // 100k sat
+            1_000_000,             // 0.01 BTC
+            10_000_000,            // 0.1 BTC
+            100_000_000,           // 1 BTC
+            500_000_000,           // 5 BTC
+            5_000_000_000,         // 50 BTC
             2_100_000_000_000_000, // 21M BTC (max supply)
         ];
         for amt in amounts {
@@ -524,11 +541,19 @@ mod tests {
     fn test_compress_amount_round_amounts_are_small() {
         // 1 BTC (1e8 sat) should compress to a small number
         let one_btc = compress_amount(100_000_000);
-        assert!(one_btc < 20, "1 BTC compressed to {} (expected < 20)", one_btc);
+        assert!(
+            one_btc < 20,
+            "1 BTC compressed to {} (expected < 20)",
+            one_btc
+        );
 
         // 50 BTC (block reward)
         let fifty_btc = compress_amount(5_000_000_000);
-        assert!(fifty_btc < 200, "50 BTC compressed to {} (expected < 200)", fifty_btc);
+        assert!(
+            fifty_btc < 200,
+            "50 BTC compressed to {} (expected < 200)",
+            fifty_btc
+        );
     }
 
     #[test]
@@ -543,7 +568,18 @@ mod tests {
 
     #[test]
     fn test_varint_roundtrip() {
-        let values: Vec<u64> = vec![0, 1, 127, 128, 255, 256, 16383, 16384, u32::MAX as u64, u64::MAX];
+        let values: Vec<u64> = vec![
+            0,
+            1,
+            127,
+            128,
+            255,
+            256,
+            16383,
+            16384,
+            u32::MAX as u64,
+            u64::MAX,
+        ];
         for v in values {
             let mut buf = Vec::new();
             push_varint(&mut buf, v);
@@ -635,10 +671,8 @@ mod tests {
                 Amount::from_sat(100_000_000), // 1 BTC
                 // P2PKH script
                 Script::from_bytes(vec![
-                    0x76, 0xa9, 0x14,
-                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
-                    0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
-                    0x88, 0xac,
+                    0x76, 0xa9, 0x14, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+                    0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x88, 0xac,
                 ]),
             ),
             height: 500_000,
@@ -662,7 +696,10 @@ mod tests {
     #[test]
     fn test_compressed_coin_coinbase() {
         let entry = UtxoEntry {
-            output: TxOut::new(Amount::from_sat(5_000_000_000), Script::from_bytes(vec![0x6a])),
+            output: TxOut::new(
+                Amount::from_sat(5_000_000_000),
+                Script::from_bytes(vec![0x6a]),
+            ),
             height: 100,
             is_coinbase: true,
         };
@@ -686,9 +723,10 @@ mod tests {
         let entry = UtxoEntry {
             output: TxOut::new(
                 Amount::from_sat(50_000),
-                Script::from_bytes(vec![0xa9, 0x14, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
-                    0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-                    0x11, 0x12, 0x13, 0x14, 0x87]),
+                Script::from_bytes(vec![
+                    0xa9, 0x14, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+                    0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x87,
+                ]),
             ),
             height: 800_000,
             is_coinbase: false,

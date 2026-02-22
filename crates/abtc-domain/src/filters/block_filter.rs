@@ -25,11 +25,11 @@
 //! - BIP158: <https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki>
 //! - BIP157: <https://github.com/bitcoin/bips/blob/master/bip-0157.mediawiki>
 
+use super::gcs::{key_from_block_hash, GcsFilter};
 use crate::crypto::hashing::hash256;
 use crate::primitives::block::Block;
 use crate::primitives::hash::{BlockHash, Hash256};
 use crate::script::Script;
-use super::gcs::{GcsFilter, key_from_block_hash};
 
 // ---------------------------------------------------------------------------
 // Filter type constants
@@ -188,11 +188,11 @@ pub fn build_filter_header_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::primitives::amount::Amount;
     use crate::primitives::block::{Block, BlockHeader};
     use crate::primitives::hash::{BlockHash, Hash256};
-    use crate::primitives::transaction::{Transaction, TxIn, TxOut, OutPoint};
-    use crate::primitives::amount::Amount;
-    use crate::script::{Script, ScriptBuilder, Opcodes};
+    use crate::primitives::transaction::{OutPoint, Transaction, TxIn, TxOut};
+    use crate::script::{Opcodes, Script, ScriptBuilder};
 
     fn dummy_tx(output_scripts: Vec<Script>) -> Transaction {
         let outputs: Vec<TxOut> = output_scripts
@@ -211,14 +211,7 @@ mod tests {
     }
 
     fn dummy_block(txs: Vec<Transaction>) -> Block {
-        let header = BlockHeader::new(
-            1,
-            BlockHash::zero(),
-            Hash256::zero(),
-            1000,
-            0x1d00ffff,
-            42,
-        );
+        let header = BlockHeader::new(1, BlockHash::zero(), Hash256::zero(), 1000, 0x1d00ffff, 42);
         Block::new(header, txs)
     }
 
@@ -362,8 +355,14 @@ mod tests {
 
     #[test]
     fn test_filter_hash_changes_with_content() {
-        let s1 = ScriptBuilder::new().push_opcode(Opcodes::OP_0).push_slice(&[0xaa; 20]).build();
-        let s2 = ScriptBuilder::new().push_opcode(Opcodes::OP_0).push_slice(&[0xbb; 20]).build();
+        let s1 = ScriptBuilder::new()
+            .push_opcode(Opcodes::OP_0)
+            .push_slice(&[0xaa; 20])
+            .build();
+        let s2 = ScriptBuilder::new()
+            .push_opcode(Opcodes::OP_0)
+            .push_slice(&[0xbb; 20])
+            .build();
 
         let block1 = dummy_block(vec![dummy_tx(vec![s1])]);
         let block2 = dummy_block(vec![dummy_tx(vec![s2])]);
@@ -400,9 +399,18 @@ mod tests {
     #[test]
     fn test_build_filter_header_chain() {
         let filters = vec![
-            (BlockHash::from_hash(Hash256::from_bytes([0x01; 32])), vec![0, 1, 2, 3]),
-            (BlockHash::from_hash(Hash256::from_bytes([0x02; 32])), vec![4, 5, 6]),
-            (BlockHash::from_hash(Hash256::from_bytes([0x03; 32])), vec![7, 8]),
+            (
+                BlockHash::from_hash(Hash256::from_bytes([0x01; 32])),
+                vec![0, 1, 2, 3],
+            ),
+            (
+                BlockHash::from_hash(Hash256::from_bytes([0x02; 32])),
+                vec![4, 5, 6],
+            ),
+            (
+                BlockHash::from_hash(Hash256::from_bytes([0x03; 32])),
+                vec![7, 8],
+            ),
         ];
 
         let chain = build_filter_header_chain(&filters, Hash256::zero());
@@ -411,15 +419,24 @@ mod tests {
         // Verify the chain links correctly
         let expected_fh0 = hash256(&filters[0].1);
         assert_eq!(chain[0].filter_hash, expected_fh0);
-        assert_eq!(chain[0].header, compute_filter_header(expected_fh0, Hash256::zero()));
+        assert_eq!(
+            chain[0].header,
+            compute_filter_header(expected_fh0, Hash256::zero())
+        );
 
         let expected_fh1 = hash256(&filters[1].1);
         assert_eq!(chain[1].filter_hash, expected_fh1);
-        assert_eq!(chain[1].header, compute_filter_header(expected_fh1, chain[0].header));
+        assert_eq!(
+            chain[1].header,
+            compute_filter_header(expected_fh1, chain[0].header)
+        );
 
         let expected_fh2 = hash256(&filters[2].1);
         assert_eq!(chain[2].filter_hash, expected_fh2);
-        assert_eq!(chain[2].header, compute_filter_header(expected_fh2, chain[1].header));
+        assert_eq!(
+            chain[2].header,
+            compute_filter_header(expected_fh2, chain[1].header)
+        );
     }
 
     #[test]

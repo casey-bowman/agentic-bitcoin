@@ -11,22 +11,23 @@
 //! an orderly shutdown with a configurable timeout.
 
 use abtc_adapters::{
-    InMemoryBlockStore, InMemoryChainStateStore, InMemoryMempool, InMemoryWallet,
-    StubPeerManager, TcpPeerManager, JsonRpcServer, SimpleMiner,
-    FileBasedWalletStore, PersistentWallet,
+    FileBasedWalletStore, InMemoryBlockStore, InMemoryChainStateStore, InMemoryMempool,
+    InMemoryWallet, JsonRpcServer, PersistentWallet, SimpleMiner, StubPeerManager, TcpPeerManager,
 };
 use abtc_application::block_index::BlockIndex;
 use abtc_application::fee_estimator::FeeEstimator;
+use abtc_application::handlers::{BlockchainRpcHandler, MiningRpcHandler, WalletRpcHandler};
 use abtc_application::net_processing::{SyncAction, SyncManager, SyncState};
 use abtc_application::rebroadcast::RebroadcastManager;
 use abtc_application::services::{BlockchainService, MempoolService, MiningService};
-use abtc_application::handlers::{BlockchainRpcHandler, MiningRpcHandler, WalletRpcHandler};
-use abtc_domain::ChainParams;
 use abtc_domain::wallet::address::AddressType;
-use abtc_ports::{BlockStore, ChainStateStore, MempoolPort, PeerEvent, PeerManager, RpcServer, WalletPort};
+use abtc_domain::ChainParams;
+use abtc_ports::{
+    BlockStore, ChainStateStore, MempoolPort, PeerEvent, PeerManager, RpcServer, WalletPort,
+};
 use clap::Parser;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
@@ -208,7 +209,7 @@ impl BitcoinNode {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| EnvFilter::new(&args.log_level))
+                    .unwrap_or_else(|_| EnvFilter::new(&args.log_level)),
             )
             .try_init();
 
@@ -238,7 +239,8 @@ impl BitcoinNode {
                     return Err(format!(
                         "Invalid --signet-challenge hex: {}: {}",
                         challenge_hex, e
-                    ).into());
+                    )
+                    .into());
                 }
             }
         }
@@ -253,7 +255,9 @@ impl BitcoinNode {
                     use abtc_adapters::{RocksDbBlockStore, RocksDbChainStateStore};
                     use std::path::Path;
 
-                    let datadir = args.datadir.replace('~', &std::env::var("HOME").unwrap_or_default());
+                    let datadir = args
+                        .datadir
+                        .replace('~', &std::env::var("HOME").unwrap_or_default());
                     let blocks_path = format!("{}/blocks", datadir);
                     let chainstate_path = format!("{}/chainstate", datadir);
 
@@ -273,11 +277,9 @@ impl BitcoinNode {
                 }
                 #[cfg(not(feature = "rocksdb-storage"))]
                 "rocksdb" => {
-                    return Err(
-                        "RocksDB storage requires the 'rocksdb-storage' feature. \
+                    return Err("RocksDB storage requires the 'rocksdb-storage' feature. \
                          Build with: cargo build --features rocksdb-storage"
-                            .into(),
-                    );
+                        .into());
                 }
                 _ => {
                     tracing::info!("Using in-memory storage backend");
@@ -288,9 +290,9 @@ impl BitcoinNode {
             };
 
         let rpc_server = Arc::new(JsonRpcServer::new(args.rpc_port));
-        let mempool_adapter = Arc::new(
-            InMemoryMempool::with_max_bytes(args.max_mempool_mb * 1_000_000)
-        );
+        let mempool_adapter = Arc::new(InMemoryMempool::with_max_bytes(
+            args.max_mempool_mb * 1_000_000,
+        ));
 
         // Create peer manager: real TCP or stub depending on flag
         let (peer_manager, tcp_peer_manager): (Arc<dyn PeerManager>, Option<Arc<TcpPeerManager>>) =
@@ -314,15 +316,22 @@ impl BitcoinNode {
 
         // Store genesis block at height 0
         if !block_store.has_block(&genesis_hash).await.unwrap_or(false) {
-            block_store.store_block(&genesis, 0).await
+            block_store
+                .store_block(&genesis, 0)
+                .await
                 .map_err(|e| format!("Failed to store genesis block: {}", e))?;
         }
 
         // Set chain tip to genesis
-        chain_state.write_chain_tip(genesis_hash, 0).await
+        chain_state
+            .write_chain_tip(genesis_hash, 0)
+            .await
             .map_err(|e| format!("Failed to set genesis chain tip: {}", e))?;
 
-        tracing::info!("Initialized blockchain with genesis block: {}", genesis_hash);
+        tracing::info!(
+            "Initialized blockchain with genesis block: {}",
+            genesis_hash
+        );
 
         // Initialize block index with genesis header and checkpoints
         let mut block_index = BlockIndex::new();
@@ -363,7 +372,13 @@ impl BitcoinNode {
         let rebroadcast_manager = Arc::new(RwLock::new(RebroadcastManager::new()));
 
         // Register RPC handlers
-        let bc_handler = Box::new(BlockchainRpcHandler::new(blockchain.clone(), mempool.clone(), fee_estimator.clone(), chain_state.clone(), block_index.clone()));
+        let bc_handler = Box::new(BlockchainRpcHandler::new(
+            blockchain.clone(),
+            mempool.clone(),
+            fee_estimator.clone(),
+            chain_state.clone(),
+            block_index.clone(),
+        ));
         rpc_server.register_handler(bc_handler).await?;
 
         let mining_handler = Box::new(MiningRpcHandler::new(mining.clone()));
@@ -383,7 +398,8 @@ impl BitcoinNode {
             let wallet: Arc<dyn WalletPort> = if let Some(ref wallet_path) = args.wallet_file {
                 // Persistent wallet: wrap InMemoryWallet with file-based store
                 let store = Arc::new(FileBasedWalletStore::new(wallet_path));
-                let persistent = PersistentWallet::new(in_memory, store).await
+                let persistent = PersistentWallet::new(in_memory, store)
+                    .await
                     .map_err(|e| format!("Failed to initialize persistent wallet: {}", e))?;
                 tracing::info!(
                     "Wallet enabled (address type: {}, persistence: {})",
@@ -393,7 +409,10 @@ impl BitcoinNode {
                 Arc::new(persistent)
             } else {
                 // In-memory only wallet (no persistence)
-                tracing::info!("Wallet enabled (address type: {}, in-memory only)", args.address_type);
+                tracing::info!(
+                    "Wallet enabled (address type: {}, in-memory only)",
+                    args.address_type
+                );
                 in_memory
             };
 
@@ -453,12 +472,10 @@ impl BitcoinNode {
         if !self.seed_peers.is_empty() {
             for seed in &self.seed_peers {
                 match seed.parse::<std::net::SocketAddr>() {
-                    Ok(addr) => {
-                        match self.peer_manager.connect_peer(addr).await {
-                            Ok(id) => tracing::info!("Connected to seed peer {} (id: {})", addr, id),
-                            Err(e) => tracing::warn!("Failed to connect to seed peer {}: {}", addr, e),
-                        }
-                    }
+                    Ok(addr) => match self.peer_manager.connect_peer(addr).await {
+                        Ok(id) => tracing::info!("Connected to seed peer {} (id: {})", addr, id),
+                        Err(e) => tracing::warn!("Failed to connect to seed peer {}: {}", addr, e),
+                    },
                     Err(e) => tracing::warn!("Invalid seed peer address '{}': {}", seed, e),
                 }
             }
@@ -707,27 +724,33 @@ impl BitcoinNode {
                             let height = info.map(|(_, h)| h).unwrap_or(0);
 
                             let confirmed_fees: Vec<(abtc_domain::primitives::Amount, usize, u32)> =
-                                block.transactions.iter().filter_map(|tx| {
-                                    if tx.is_coinbase() {
-                                        return None;
-                                    }
-                                    // Approximate fee: we don't have input values readily,
-                                    // so use a heuristic — the mempool had the fee when we
-                                    // accepted the tx.  For now, estimate 1 sat/vB minimum
-                                    // as a placeholder; real fee calculation requires UTXO lookup.
-                                    let vsize = tx.compute_vsize() as usize;
-                                    let estimated_fee = abtc_domain::primitives::Amount::from_sat(
-                                        vsize as i64, // ~1 sat/vB estimate
-                                    );
-                                    Some((estimated_fee, vsize, 1u32))
-                                }).collect();
+                                block
+                                    .transactions
+                                    .iter()
+                                    .filter_map(|tx| {
+                                        if tx.is_coinbase() {
+                                            return None;
+                                        }
+                                        // Approximate fee: we don't have input values readily,
+                                        // so use a heuristic — the mempool had the fee when we
+                                        // accepted the tx.  For now, estimate 1 sat/vB minimum
+                                        // as a placeholder; real fee calculation requires UTXO lookup.
+                                        let vsize = tx.compute_vsize() as usize;
+                                        let estimated_fee =
+                                            abtc_domain::primitives::Amount::from_sat(
+                                                vsize as i64, // ~1 sat/vB estimate
+                                            );
+                                        Some((estimated_fee, vsize, 1u32))
+                                    })
+                                    .collect();
 
                             if !confirmed_fees.is_empty() {
                                 let mut est = self.fee_estimator.write().await;
                                 est.process_block(height, &confirmed_fees);
                                 tracing::debug!(
                                     "Fee estimator updated: height={}, txs={}",
-                                    height, confirmed_fees.len()
+                                    height,
+                                    confirmed_fees.len()
                                 );
                             }
                         }
@@ -893,8 +916,8 @@ async fn wait_for_shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("Received SIGINT (Ctrl+C)");
@@ -906,7 +929,9 @@ async fn wait_for_shutdown_signal() {
     }
     #[cfg(not(unix))]
     {
-        tokio::signal::ctrl_c().await.expect("failed to listen for Ctrl+C");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for Ctrl+C");
         tracing::info!("Received Ctrl+C");
     }
 }
@@ -1103,13 +1128,20 @@ mod tests {
         let node = BitcoinNode::new(make_test_args()).await.unwrap();
 
         let rb = node.rebroadcast_manager.read().await;
-        assert_eq!(rb.tracked_count(), 0, "No transactions should be tracked initially");
+        assert_eq!(
+            rb.tracked_count(),
+            0,
+            "No transactions should be tracked initially"
+        );
     }
 
     #[tokio::test]
     async fn test_node_has_wallet_when_enabled() {
         let node = BitcoinNode::new(make_test_args()).await.unwrap();
-        assert!(node.wallet.is_some(), "Wallet should be present when enable_wallet is true");
+        assert!(
+            node.wallet.is_some(),
+            "Wallet should be present when enable_wallet is true"
+        );
     }
 
     #[tokio::test]
@@ -1118,7 +1150,10 @@ mod tests {
         args.enable_wallet = false;
 
         let node = BitcoinNode::new(args).await.unwrap();
-        assert!(node.wallet.is_none(), "Wallet should be absent when enable_wallet is false");
+        assert!(
+            node.wallet.is_none(),
+            "Wallet should be absent when enable_wallet is false"
+        );
     }
 
     #[tokio::test]
@@ -1279,7 +1314,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_start_sets_running() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
         assert!(node.running.load(Ordering::Acquire));
         // Clean up
@@ -1288,7 +1325,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_stop_clears_running() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
         assert!(node.running.load(Ordering::Acquire));
 
@@ -1298,7 +1337,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_shutdown_signal_stops_tasks() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
 
         // Background tasks should be running
@@ -1311,7 +1352,10 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         let active_after = node.task_tracker.lock().unwrap().active_count();
-        assert_eq!(active_after, 0, "All tasks should have exited after shutdown signal");
+        assert_eq!(
+            active_after, 0,
+            "All tasks should have exited after shutdown signal"
+        );
 
         let _ = node.stop().await;
     }
@@ -1332,7 +1376,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_after_start() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
 
         let health = node.health().await;
@@ -1346,7 +1392,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_after_stop() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
         node.stop().await.unwrap();
 
@@ -1366,7 +1414,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_health_fields_consistent() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
 
         let health = node.health().await;
@@ -1381,7 +1431,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_double_stop_is_safe() {
-        let node = BitcoinNode::new(make_test_args_with_port(unique_port())).await.unwrap();
+        let node = BitcoinNode::new(make_test_args_with_port(unique_port()))
+            .await
+            .unwrap();
         node.start().await.unwrap();
 
         // First stop

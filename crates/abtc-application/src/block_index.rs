@@ -248,9 +248,7 @@ impl BlockIndex {
 
     /// Get the current best chain height.
     pub fn best_height(&self) -> u32 {
-        self.active_chain
-            .len()
-            .saturating_sub(1) as u32
+        self.active_chain.len().saturating_sub(1) as u32
     }
 
     /// Get the total number of known headers.
@@ -393,7 +391,11 @@ impl std::fmt::Display for BlockIndexError {
         match self {
             BlockIndexError::OrphanHeader => write!(f, "orphan header (unknown parent)"),
             BlockIndexError::DuplicateBlock => write!(f, "duplicate block"),
-            BlockIndexError::CheckpointMismatch { height, expected, got } => {
+            BlockIndexError::CheckpointMismatch {
+                height,
+                expected,
+                got,
+            } => {
                 write!(
                     f,
                     "checkpoint mismatch at height {}: expected {}, got {}",
@@ -519,10 +521,7 @@ mod tests {
         index.init_genesis(genesis);
 
         // Try to add a header with unknown parent
-        let orphan = make_header(
-            BlockHash::from_hash(Hash256::from_bytes([0xff; 32])),
-            99,
-        );
+        let orphan = make_header(BlockHash::from_hash(Hash256::from_bytes([0xff; 32])), 99);
         let result = index.add_header(orphan);
         assert_eq!(result, Err(BlockIndexError::OrphanHeader));
     }
@@ -697,9 +696,18 @@ mod tests {
         assert_eq!(index.last_checkpoint_height(), 0);
 
         index.load_checkpoints(&[
-            Checkpoint { height: 100, hash_hex: "aaa" },
-            Checkpoint { height: 500, hash_hex: "bbb" },
-            Checkpoint { height: 250, hash_hex: "ccc" },
+            Checkpoint {
+                height: 100,
+                hash_hex: "aaa",
+            },
+            Checkpoint {
+                height: 500,
+                hash_hex: "bbb",
+            },
+            Checkpoint {
+                height: 250,
+                hash_hex: "ccc",
+            },
         ]);
         assert_eq!(index.last_checkpoint_height(), 500);
     }
@@ -755,7 +763,9 @@ mod tests {
 
         // Build a chain of 11 blocks (heights 0..=10) with timestamps
         // chosen so the median is well-defined.
-        let timestamps = [1000, 1010, 1020, 1005, 1030, 1015, 1025, 1035, 1008, 1040, 1050];
+        let timestamps = [
+            1000, 1010, 1020, 1005, 1030, 1015, 1025, 1035, 1008, 1040, 1050,
+        ];
         let mut prev = genesis_hash;
         for i in 1..=10u32 {
             let h = make_header_with_time(prev, i, timestamps[i as usize]);

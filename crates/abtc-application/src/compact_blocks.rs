@@ -102,7 +102,7 @@ pub type ShortTxId = [u8; 6];
 /// key0 and key1 are the first and second 8-byte little-endian words of
 /// SHA256(SHA256(header) || nonce).
 fn compute_siphash_keys(header: &BlockHeader, nonce: u64) -> (u64, u64) {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     // SHA256(SHA256(header) || nonce)
     let header_hash = header.block_hash();
@@ -319,7 +319,10 @@ mod tests {
 
     fn make_test_tx(value: i64) -> Transaction {
         Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+            )],
             vec![TxOut::new(Amount::from_sat(value), Script::new())],
             0,
         )
@@ -373,7 +376,11 @@ mod tests {
             ReconstructResult::Success(reconstructed) => {
                 assert_eq!(reconstructed.transactions.len(), 4);
                 // Verify all txids match.
-                for (orig, recon) in block.transactions.iter().zip(reconstructed.transactions.iter()) {
+                for (orig, recon) in block
+                    .transactions
+                    .iter()
+                    .zip(reconstructed.transactions.iter())
+                {
                     assert_eq!(orig.txid(), recon.txid());
                 }
             }

@@ -3,9 +3,9 @@
 //! Supports P2PKH (legacy), P2WPKH (native SegWit), and P2SH-P2WPKH (wrapped SegWit).
 //! Includes Base58Check for legacy addresses and Bech32 for native SegWit.
 
+use super::keys::{base58check_decode, base58check_encode, KeyError, PublicKey};
 use crate::crypto::hashing;
 use crate::script::{Opcodes, Script, ScriptBuilder};
-use super::keys::{PublicKey, base58check_encode, base58check_decode, KeyError};
 
 /// Bitcoin address types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,7 +122,7 @@ impl Address {
         // Build scriptPubKey: OP_0 <20-byte pubkey hash>
         let mut spk_bytes = Vec::with_capacity(22);
         spk_bytes.push(0x00); // OP_0
-        spk_bytes.push(20);   // push 20 bytes
+        spk_bytes.push(20); // push 20 bytes
         spk_bytes.extend_from_slice(&hash);
         let script_pubkey = Script::from_bytes(spk_bytes);
 
@@ -201,7 +201,7 @@ impl Address {
         // Build scriptPubKey: OP_1 <32-byte output key>
         let mut spk_bytes = Vec::with_capacity(34);
         spk_bytes.push(0x51); // OP_1
-        spk_bytes.push(32);   // push 32 bytes
+        spk_bytes.push(32); // push 32 bytes
         spk_bytes.extend_from_slice(output_key);
         let script_pubkey = Script::from_bytes(spk_bytes);
 
@@ -221,8 +221,11 @@ impl Address {
     /// # Arguments
     /// * `internal_key` - 32-byte x-only internal public key
     /// * `mainnet` - Whether this is a mainnet address
-    pub fn p2tr_from_internal_key(internal_key: &[u8; 32], mainnet: bool) -> Result<Self, AddressError> {
-        use secp256k1::{Secp256k1, XOnlyPublicKey, Scalar};
+    pub fn p2tr_from_internal_key(
+        internal_key: &[u8; 32],
+        mainnet: bool,
+    ) -> Result<Self, AddressError> {
+        use secp256k1::{Scalar, Secp256k1, XOnlyPublicKey};
 
         let secp = Secp256k1::verification_only();
 
@@ -234,7 +237,8 @@ impl Address {
         let scalar = Scalar::from_be_bytes(tweak)
             .map_err(|_| AddressError::InvalidFormat("tweak overflow".into()))?;
 
-        let (output_key, _parity) = pk.add_tweak(&secp, &scalar)
+        let (output_key, _parity) = pk
+            .add_tweak(&secp, &scalar)
             .map_err(|e| AddressError::InvalidFormat(format!("tweak failed: {}", e)))?;
 
         Ok(Self::p2tr(&output_key.serialize(), mainnet))
@@ -466,7 +470,9 @@ fn bech32_create_checksum_with(hrp: &str, data: &[u8], encoding: Bech32Encoding)
         Bech32Encoding::Bech32m => BECH32M_CONST,
     };
     let polymod = bech32_polymod(&values) ^ constant;
-    (0..6).map(|i| ((polymod >> (5 * (5 - i))) & 31) as u8).collect()
+    (0..6)
+        .map(|i| ((polymod >> (5 * (5 - i))) & 31) as u8)
+        .collect()
 }
 
 // Old bech32-only checksum removed; use bech32_verify_checksum_encoding instead.
@@ -559,7 +565,9 @@ fn bech32m_encode(hrp: &str, witness_version: u8, program: &[u8]) -> String {
 }
 
 /// Decode a bech32/bech32m address → (hrp, witness_version, program, encoding)
-fn bech32_decode_versioned(address: &str) -> Result<(String, u8, Vec<u8>, Bech32Encoding), AddressError> {
+fn bech32_decode_versioned(
+    address: &str,
+) -> Result<(String, u8, Vec<u8>, Bech32Encoding), AddressError> {
     let lower = address.to_lowercase();
 
     let sep = lower
@@ -679,7 +687,10 @@ mod tests {
 
         let decoded = Address::decode(&addr.encoded).unwrap();
         assert_eq!(decoded.address_type, AddressType::P2PKH);
-        assert_eq!(decoded.script_pubkey.as_bytes(), addr.script_pubkey.as_bytes());
+        assert_eq!(
+            decoded.script_pubkey.as_bytes(),
+            addr.script_pubkey.as_bytes()
+        );
     }
 
     #[test]
@@ -690,14 +701,18 @@ mod tests {
 
         let decoded = Address::decode(&addr.encoded).unwrap();
         assert_eq!(decoded.address_type, AddressType::P2WPKH);
-        assert_eq!(decoded.script_pubkey.as_bytes(), addr.script_pubkey.as_bytes());
+        assert_eq!(
+            decoded.script_pubkey.as_bytes(),
+            addr.script_pubkey.as_bytes()
+        );
     }
 
     #[test]
     fn test_bech32_roundtrip() {
-        let program = [0x75, 0x1e, 0x76, 0xe8, 0x19, 0x91, 0x96, 0xd4,
-                       0x54, 0x94, 0x1c, 0x45, 0xd1, 0xb3, 0xa3, 0x23,
-                       0xf1, 0x43, 0x3b, 0xd6];
+        let program = [
+            0x75, 0x1e, 0x76, 0xe8, 0x19, 0x91, 0x96, 0xd4, 0x54, 0x94, 0x1c, 0x45, 0xd1, 0xb3,
+            0xa3, 0x23, 0xf1, 0x43, 0x3b, 0xd6,
+        ];
 
         let encoded = bech32_encode("bc", 0, &program);
         assert!(encoded.starts_with("bc1q"));
@@ -723,7 +738,7 @@ mod tests {
         assert!(addr.script_pubkey.is_p2tr());
         assert_eq!(addr.script_pubkey.as_bytes().len(), 34);
         assert_eq!(addr.script_pubkey.as_bytes()[0], 0x51); // OP_1
-        assert_eq!(addr.script_pubkey.as_bytes()[1], 32);   // push 32
+        assert_eq!(addr.script_pubkey.as_bytes()[1], 32); // push 32
         assert_eq!(&addr.script_pubkey.as_bytes()[2..], &output_key);
     }
 
@@ -744,7 +759,10 @@ mod tests {
 
         let decoded = Address::decode(&addr.encoded).unwrap();
         assert_eq!(decoded.address_type, AddressType::P2TR);
-        assert_eq!(decoded.script_pubkey.as_bytes(), addr.script_pubkey.as_bytes());
+        assert_eq!(
+            decoded.script_pubkey.as_bytes(),
+            addr.script_pubkey.as_bytes()
+        );
         assert!(decoded.mainnet);
     }
 
@@ -760,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_p2tr_from_internal_key() {
-        use secp256k1::{Secp256k1, SecretKey, Keypair, XOnlyPublicKey};
+        use secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 
         let secret = SecretKey::from_slice(&[0x42; 32]).unwrap();
         let secp = Secp256k1::new();
@@ -775,7 +793,10 @@ mod tests {
 
         // Decode roundtrip
         let decoded = Address::decode(&addr.encoded).unwrap();
-        assert_eq!(decoded.script_pubkey.as_bytes(), addr.script_pubkey.as_bytes());
+        assert_eq!(
+            decoded.script_pubkey.as_bytes(),
+            addr.script_pubkey.as_bytes()
+        );
     }
 
     #[test]
@@ -785,8 +806,7 @@ mod tests {
         let encoded = bech32m_encode("bc", 1, &program);
         assert!(encoded.starts_with("bc1p"));
 
-        let (hrp, version, decoded_program, encoding) =
-            bech32_decode_versioned(&encoded).unwrap();
+        let (hrp, version, decoded_program, encoding) = bech32_decode_versioned(&encoded).unwrap();
         assert_eq!(hrp, "bc");
         assert_eq!(version, 1);
         assert_eq!(decoded_program, program);

@@ -9,8 +9,8 @@
 
 use std::fmt;
 
+use crate::wallet::hd::{ExtendedPrivateKey, ExtendedPublicKey};
 use crate::wallet::keys::PublicKey;
-use crate::wallet::hd::{ExtendedPublicKey, ExtendedPrivateKey};
 
 // ---------------------------------------------------------------------------
 // Key origin — [fingerprint/path] annotation
@@ -177,7 +177,8 @@ impl ExtendedKey {
                     if idx & HARDENED_BIT != 0 {
                         return Err(KeyError::HardenedWithoutPrivateKey);
                     }
-                    key = key.derive_child(idx)
+                    key = key
+                        .derive_child(idx)
                         .map_err(|e| KeyError::Derivation(e.to_string()))?;
                 }
                 key
@@ -185,7 +186,8 @@ impl ExtendedKey {
             XKey::Priv(xprv) => {
                 let mut key = xprv.clone();
                 for &idx in &self.derivation_path {
-                    key = key.derive_child(idx)
+                    key = key
+                        .derive_child(idx)
                         .map_err(|e| KeyError::Derivation(e.to_string()))?;
                 }
                 key.to_extended_public_key()
@@ -195,20 +197,21 @@ impl ExtendedKey {
         // Then apply the wildcard
         let final_xpub = match self.wildcard {
             Wildcard::None => xpub,
-            Wildcard::Unhardened => {
-                xpub.derive_child(index)
-                    .map_err(|e| KeyError::Derivation(e.to_string()))?
-            }
+            Wildcard::Unhardened => xpub
+                .derive_child(index)
+                .map_err(|e| KeyError::Derivation(e.to_string()))?,
             Wildcard::Hardened => {
                 // Hardened wildcard requires going back to the xprv
                 match &self.xkey {
                     XKey::Priv(xprv) => {
                         let mut key = xprv.clone();
                         for &idx in &self.derivation_path {
-                            key = key.derive_child(idx)
+                            key = key
+                                .derive_child(idx)
                                 .map_err(|e| KeyError::Derivation(e.to_string()))?;
                         }
-                        let child = key.derive_child(index | HARDENED_BIT)
+                        let child = key
+                            .derive_child(index | HARDENED_BIT)
                             .map_err(|e| KeyError::Derivation(e.to_string()))?;
                         child.to_extended_public_key()
                     }

@@ -14,10 +14,10 @@
 //! use ASICs, so there's no point in optimising the nonce search beyond what is
 //! needed for testing.
 
-use abtc_domain::consensus::{decode_compact, decode_compact_u256, hash_meets_target, ConsensusParams};
-use abtc_domain::primitives::{
-    Amount, Block, BlockHash, BlockHeader, Hash256, Transaction, TxOut,
+use abtc_domain::consensus::{
+    decode_compact, decode_compact_u256, hash_meets_target, ConsensusParams,
 };
+use abtc_domain::primitives::{Amount, Block, BlockHash, BlockHeader, Hash256, Transaction, TxOut};
 use abtc_domain::script::Script;
 
 use crate::chain_state::{ChainState, ChainStateError};
@@ -310,7 +310,7 @@ pub fn sign_signet_block_p2wpkh(
 mod tests {
     use super::*;
     use abtc_domain::consensus::ConsensusParams;
-    use abtc_domain::primitives::{BlockHeader, Block, Hash256, BlockHash, TxOut, Amount};
+    use abtc_domain::primitives::{Amount, Block, BlockHash, BlockHeader, Hash256, TxOut};
     use abtc_domain::script::Script;
 
     /// Helper: create a regtest genesis block.
@@ -432,7 +432,10 @@ mod tests {
         // Verify the mined block actually satisfies PoW (full 256-bit).
         let hash = mined.header.block_hash();
         let target = decode_compact_u256(bits);
-        assert!(hash_meets_target(hash.as_bytes(), &target), "mined block should satisfy PoW");
+        assert!(
+            hash_meets_target(hash.as_bytes(), &target),
+            "mined block should satisfy PoW"
+        );
     }
 
     // ── generate_blocks tests ──────────────────────────────────
@@ -517,9 +520,7 @@ mod tests {
 
     #[test]
     fn test_sign_signet_block_p2wpkh() {
-        use abtc_domain::consensus::signet::{
-            build_signet_commitment, validate_signet_block,
-        };
+        use abtc_domain::consensus::signet::{build_signet_commitment, validate_signet_block};
         use abtc_domain::crypto::hashing::hash160;
         use abtc_domain::script::Witness;
 
@@ -563,7 +564,11 @@ mod tests {
 
         // Validate it
         let result = validate_signet_block(&signed, &challenge);
-        assert!(result.is_ok(), "signed signet block should validate: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "signed signet block should validate: {:?}",
+            result
+        );
     }
 
     // ── Low-level helper tests ─────────────────────────────────

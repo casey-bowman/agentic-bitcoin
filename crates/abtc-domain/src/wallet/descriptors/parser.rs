@@ -9,14 +9,14 @@
 
 use std::fmt;
 
-use crate::wallet::keys::PublicKey;
-use crate::wallet::hd::{ExtendedPublicKey, ExtendedPrivateKey};
 use crate::script::miniscript::Miniscript;
+use crate::wallet::hd::{ExtendedPrivateKey, ExtendedPublicKey};
+use crate::wallet::keys::PublicKey;
 
 use super::checksum;
-use super::descriptor::{Descriptor, ShInner, WshInner, TrTree};
+use super::descriptor::{Descriptor, ShInner, TrTree, WshInner};
 use super::key_expr::{
-    DescriptorKey, SingleKey, ExtendedKey, XKey, KeyOrigin, Wildcard, HARDENED_BIT,
+    DescriptorKey, ExtendedKey, KeyOrigin, SingleKey, Wildcard, XKey, HARDENED_BIT,
 };
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,8 @@ impl<'a> Parser<'a> {
         if num_str.is_empty() {
             return Err(ParseError::Other("expected number".to_string()));
         }
-        num_str.parse::<usize>()
+        num_str
+            .parse::<usize>()
             .map_err(|_| ParseError::InvalidThreshold(num_str.to_string()))
     }
 }
@@ -144,8 +145,7 @@ pub fn parse_descriptor(input: &str) -> Result<Descriptor, ParseError> {
         if checksum_str.len() == 8 {
             // Verify the checksum
             let body = &input[..hash_pos];
-            checksum::verify_checksum(input)
-                .map_err(|e| ParseError::Checksum(e.to_string()))?;
+            checksum::verify_checksum(input).map_err(|e| ParseError::Checksum(e.to_string()))?;
             body
         } else {
             input
@@ -318,7 +318,8 @@ fn parse_tr_tree(p: &mut Parser) -> Result<TrTree, ParseError> {
                 p.expect_char('(')?;
                 let key = parse_key_expr(p)?;
                 p.expect_char(')')?;
-                let pk = key.derive_public_key(0)
+                let pk = key
+                    .derive_public_key(0)
                     .map_err(|e| ParseError::InvalidKey(e.to_string()))?;
                 Ok(TrTree::Leaf(Miniscript::pk(pk)))
             }
@@ -326,7 +327,8 @@ fn parse_tr_tree(p: &mut Parser) -> Result<TrTree, ParseError> {
                 p.expect_char('(')?;
                 let key = parse_key_expr(p)?;
                 p.expect_char(')')?;
-                let pk = key.derive_public_key(0)
+                let pk = key
+                    .derive_public_key(0)
                     .map_err(|e| ParseError::InvalidKey(e.to_string()))?;
                 Ok(TrTree::Leaf(Miniscript::pk_k(pk)))
             }
@@ -359,8 +361,10 @@ fn parse_key_expr(p: &mut Parser) -> Result<DescriptorKey, ParseError> {
     }
 
     // Try to parse as xpub/xprv (starts with xpub, xprv, tpub, tprv)
-    if key_str.starts_with("xpub") || key_str.starts_with("tpub")
-        || key_str.starts_with("xprv") || key_str.starts_with("tprv")
+    if key_str.starts_with("xpub")
+        || key_str.starts_with("tpub")
+        || key_str.starts_with("xprv")
+        || key_str.starts_with("tprv")
     {
         return parse_extended_key(key_str, origin);
     }
@@ -689,7 +693,10 @@ mod tests {
 
     #[test]
     fn test_hex_decode() {
-        assert_eq!(hex_decode("deadbeef").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(
+            hex_decode("deadbeef").unwrap(),
+            vec![0xde, 0xad, 0xbe, 0xef]
+        );
         assert!(hex_decode("xyz").is_err());
         assert!(hex_decode("0").is_err()); // odd length
     }

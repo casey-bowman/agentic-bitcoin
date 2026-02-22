@@ -13,13 +13,11 @@
 //!
 //! The resulting `BlockTemplate` is ready for nonce-grinding by the miner.
 
-use async_trait::async_trait;
 use abtc_domain::consensus::{ConsensusParams, MAX_BLOCK_WEIGHT};
-use abtc_domain::primitives::{
-    Amount, Block, BlockHeader, Hash256, Transaction, TxOut,
-};
+use abtc_domain::primitives::{Amount, Block, BlockHeader, Hash256, Transaction, TxOut};
 use abtc_domain::script::Script;
 use abtc_ports::{BlockTemplate, BlockTemplateProvider, ChainStateStore, MempoolPort};
+use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -38,10 +36,7 @@ pub struct BlockAssembler {
 
 impl BlockAssembler {
     /// Create a new block assembler.
-    pub fn new(
-        chain_state: Arc<dyn ChainStateStore>,
-        mempool: Arc<dyn MempoolPort>,
-    ) -> Self {
+    pub fn new(chain_state: Arc<dyn ChainStateStore>, mempool: Arc<dyn MempoolPort>) -> Self {
         BlockAssembler {
             chain_state,
             mempool,
@@ -116,7 +111,9 @@ impl BlockTemplateProvider for BlockAssembler {
         sorted.sort_by(|a, b| {
             let rate_a = a.fee.as_sat() as f64 / a.size.max(1) as f64;
             let rate_b = b.fee.as_sat() as f64 / b.size.max(1) as f64;
-            rate_b.partial_cmp(&rate_a).unwrap_or(std::cmp::Ordering::Equal)
+            rate_b
+                .partial_cmp(&rate_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         let mut block_txs: Vec<Transaction> = Vec::new();
@@ -290,9 +287,7 @@ mod tests {
         ) -> Result<Vec<MempoolEntry>, Box<dyn Error + Send + Sync>> {
             Ok(self.entries.clone())
         }
-        async fn get_transaction_count(
-            &self,
-        ) -> Result<u32, Box<dyn Error + Send + Sync>> {
+        async fn get_transaction_count(&self) -> Result<u32, Box<dyn Error + Send + Sync>> {
             Ok(self.entries.len() as u32)
         }
         async fn estimate_fee(
@@ -301,9 +296,7 @@ mod tests {
         ) -> Result<f64, Box<dyn Error + Send + Sync>> {
             Ok(1.0)
         }
-        async fn get_mempool_info(
-            &self,
-        ) -> Result<MempoolInfo, Box<dyn Error + Send + Sync>> {
+        async fn get_mempool_info(&self) -> Result<MempoolInfo, Box<dyn Error + Send + Sync>> {
             Ok(MempoolInfo {
                 size: self.entries.len() as u32,
                 bytes: 0,
@@ -411,7 +404,7 @@ mod tests {
         let tx_low = make_test_tx(10_000);
         let tx_high = make_test_tx(20_000);
         let entries = vec![
-            make_mempool_entry(&tx_low, 100),  // 0.5 sat/byte
+            make_mempool_entry(&tx_low, 100),   // 0.5 sat/byte
             make_mempool_entry(&tx_high, 2000), // 10 sat/byte
         ];
 
@@ -428,7 +421,7 @@ mod tests {
         // Higher fee-rate tx should come first (after coinbase)
         assert_eq!(template.block.transactions.len(), 3);
         assert_eq!(template.fees[1].as_sat(), 2000); // high-fee first
-        assert_eq!(template.fees[2].as_sat(), 100);  // low-fee second
+        assert_eq!(template.fees[2].as_sat(), 100); // low-fee second
     }
 
     #[tokio::test]

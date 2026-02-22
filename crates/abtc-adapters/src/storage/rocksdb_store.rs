@@ -13,13 +13,13 @@
 //! - `utxos` — UTXO entries keyed by (txid, vout)
 //! - `meta` — metadata: best block hash, chain tip, etc.
 
-use async_trait::async_trait;
 use abtc_domain::primitives::{
-    Amount, Block, BlockHash, BlockHeader, Hash256, OutPoint,
-    Transaction, TxIn, TxOut, Txid, Witness,
+    Amount, Block, BlockHash, BlockHeader, Hash256, OutPoint, Transaction, TxIn, TxOut, Txid,
+    Witness,
 };
 use abtc_domain::Script;
 use abtc_ports::{BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo};
+use async_trait::async_trait;
 use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -110,11 +110,7 @@ impl BlockStore for RocksDbBlockStore {
 
             let block_bytes = serialize_block(&block);
             db.put_cf(&cf_blocks, block_hash.as_bytes(), &block_bytes)?;
-            db.put_cf(
-                &cf_heights,
-                block_hash.as_bytes(),
-                &height.to_le_bytes(),
-            )?;
+            db.put_cf(&cf_heights, block_hash.as_bytes(), &height.to_le_bytes())?;
 
             // Update best block hash
             db.put_cf(&cf_meta, META_BEST_BLOCK_HASH, block_hash.as_bytes())?;
@@ -286,12 +282,14 @@ fn deserialize_utxo_entry(
     let value = i64::from_le_bytes([
         bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12],
     ]);
-    let script_len =
-        u32::from_le_bytes([bytes[13], bytes[14], bytes[15], bytes[16]]) as usize;
+    let script_len = u32::from_le_bytes([bytes[13], bytes[14], bytes[15], bytes[16]]) as usize;
     let script_bytes = &bytes[17..17 + script_len];
 
     Ok(UtxoEntry {
-        output: TxOut::new(Amount::from_sat(value), Script::from_bytes(script_bytes.to_vec())),
+        output: TxOut::new(
+            Amount::from_sat(value),
+            Script::from_bytes(script_bytes.to_vec()),
+        ),
         height,
         is_coinbase,
     })
@@ -417,7 +415,9 @@ impl ChainStateStore for RocksDbChainStateStore {
         .await?
     }
 
-    async fn get_utxo_set_info(&self) -> Result<UtxoSetInfo, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_utxo_set_info(
+        &self,
+    ) -> Result<UtxoSetInfo, Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.clone();
 
         // Also read the chain tip inside the blocking task
@@ -541,9 +541,7 @@ fn serialize_transaction(buf: &mut Vec<u8>, tx: &Transaction) {
 }
 
 /// Deserialize a block from stored bytes
-fn deserialize_block(
-    bytes: &[u8],
-) -> Result<Block, Box<dyn std::error::Error + Send + Sync>> {
+fn deserialize_block(bytes: &[u8]) -> Result<Block, Box<dyn std::error::Error + Send + Sync>> {
     let mut pos = 0;
 
     // Header
@@ -649,7 +647,12 @@ fn read_u32(
     if *pos + 4 > bytes.len() {
         return Err("unexpected end of data".into());
     }
-    let val = u32::from_le_bytes([bytes[*pos], bytes[*pos + 1], bytes[*pos + 2], bytes[*pos + 3]]);
+    let val = u32::from_le_bytes([
+        bytes[*pos],
+        bytes[*pos + 1],
+        bytes[*pos + 2],
+        bytes[*pos + 3],
+    ]);
     *pos += 4;
     Ok(val)
 }
@@ -661,7 +664,12 @@ fn read_i32(
     if *pos + 4 > bytes.len() {
         return Err("unexpected end of data".into());
     }
-    let val = i32::from_le_bytes([bytes[*pos], bytes[*pos + 1], bytes[*pos + 2], bytes[*pos + 3]]);
+    let val = i32::from_le_bytes([
+        bytes[*pos],
+        bytes[*pos + 1],
+        bytes[*pos + 2],
+        bytes[*pos + 3],
+    ]);
     *pos += 4;
     Ok(val)
 }
@@ -723,16 +731,16 @@ mod tests {
         let vout = 42u32;
         let key = utxo_key(&txid, vout);
         assert_eq!(&key[..32], txid.as_bytes());
-        assert_eq!(
-            u32::from_le_bytes([key[32], key[33], key[34], key[35]]),
-            42
-        );
+        assert_eq!(u32::from_le_bytes([key[32], key[33], key[34], key[35]]), 42);
     }
 
     #[test]
     fn test_utxo_entry_serialization() {
         let entry = UtxoEntry {
-            output: TxOut::new(Amount::from_sat(50_000), Script::from_bytes(vec![0x76, 0xa9])),
+            output: TxOut::new(
+                Amount::from_sat(50_000),
+                Script::from_bytes(vec![0x76, 0xa9]),
+            ),
             height: 100,
             is_coinbase: true,
         };

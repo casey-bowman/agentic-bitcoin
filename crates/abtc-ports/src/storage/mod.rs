@@ -3,7 +3,7 @@
 //! This module defines the port traits for persisting blockchain data.
 //! Implementations of these traits are provided by adapter crates (e.g., btc-adapter-leveldb, btc-adapter-sqlite).
 
-use abtc_domain::primitives::{Block, BlockHash, Amount, TxOut, Txid};
+use abtc_domain::primitives::{Amount, Block, BlockHash, TxOut, Txid};
 use std::error::Error;
 
 /// Summary statistics for the UTXO set, returned by `gettxoutsetinfo`.
@@ -96,7 +96,10 @@ pub trait BlockStore: Send + Sync {
     /// # Returns
     ///
     /// Returns `Some(block)` if the block exists, `None` if it doesn't.
-    async fn get_block(&self, hash: &BlockHash) -> Result<Option<Block>, Box<dyn Error + Send + Sync>>;
+    async fn get_block(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<Block>, Box<dyn Error + Send + Sync>>;
 
     /// Retrieves a block header by its hash.
     ///
@@ -139,7 +142,10 @@ pub trait BlockStore: Send + Sync {
     /// # Returns
     ///
     /// Returns `Some(height)` if the block exists, `None` otherwise.
-    async fn get_block_height(&self, hash: &BlockHash) -> Result<Option<u32>, Box<dyn Error + Send + Sync>>;
+    async fn get_block_height(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<u32>, Box<dyn Error + Send + Sync>>;
 }
 
 /// Port trait for persistent chain state storage.
@@ -212,8 +218,11 @@ pub trait ChainStateStore: Send + Sync {
     /// # Returns
     ///
     /// Returns `Ok(())` on success.
-    async fn write_chain_tip(&self, hash: BlockHash, height: u32)
-        -> Result<(), Box<dyn Error + Send + Sync>>;
+    async fn write_chain_tip(
+        &self,
+        hash: BlockHash,
+        height: u32,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>;
 
     /// Computes summary statistics for the entire UTXO set.
     ///

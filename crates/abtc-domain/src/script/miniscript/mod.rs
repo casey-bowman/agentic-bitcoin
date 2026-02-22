@@ -5,14 +5,14 @@
 //
 // Reference: https://bitcoin.sipa.be/miniscript/
 
-pub mod types;
-pub mod fragment;
 pub mod compiler;
 pub mod decode;
+pub mod fragment;
 pub mod policy;
+pub mod types;
 
 // Re-export key public types
-pub use types::{BaseType, TypeModifiers, MiniscriptType};
-pub use fragment::{Terminal, Miniscript};
 pub use decode::DecodeError;
-pub use policy::{Policy, PolicyParseError, CompileError, parse_policy};
+pub use fragment::{Miniscript, Terminal};
+pub use policy::{parse_policy, CompileError, Policy, PolicyParseError};
+pub use types::{BaseType, MiniscriptType, TypeModifiers};

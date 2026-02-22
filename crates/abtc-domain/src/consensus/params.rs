@@ -33,57 +33,53 @@ impl std::fmt::Display for Network {
 pub struct ConsensusParams {
     /// Network type
     pub network: Network,
-    
+
     // Block and transaction parameters
-    
     /// Genesis block hash
     pub genesis_hash: BlockHash,
-    
+
     /// Block subsidy halving interval (210,000 blocks)
     pub subsidy_halving_interval: u32,
-    
+
     /// BIP34 activation height
     pub bip34_height: u32,
-    
+
     /// BIP65 (CLTV) activation height
     pub bip65_height: u32,
-    
+
     /// BIP66 (DER signatures) activation height
     pub bip66_height: u32,
-    
+
     /// Check sequence verify (BIP112) activation height
     pub csv_height: u32,
-    
+
     /// SegWit (BIP141) activation height
     pub segwit_height: u32,
-    
+
     // Proof of Work parameters
-    
     /// Maximum target (minimum difficulty) in compact nBits format
     pub pow_limit_bits: u32,
-    
+
     /// Target timespan for difficulty adjustment (2 weeks in seconds)
     pub pow_target_timespan: u32,
-    
+
     /// Target block spacing (10 minutes in seconds)
     pub pow_target_spacing: u32,
-    
+
     /// Whether to allow minimum difficulty blocks
     pub allow_min_difficulty: bool,
-    
+
     /// Whether retargeting is disabled
     pub no_retargeting: bool,
-    
+
     // Chain validation parameters
-    
     /// Minimum chain work for syncing
     pub minimum_chain_work: u128,
-    
+
     /// Default assume valid block hash
     pub default_assume_valid: Option<BlockHash>,
-    
+
     // Signet parameters
-    
     /// Signet challenge
     pub signet_challenge: Option<Vec<u8>>,
 }
@@ -102,13 +98,13 @@ impl ConsensusParams {
             segwit_height: 481_824,
             pow_limit_bits: 0x1d00ffff,
             pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks
-            pow_target_spacing: 10 * 60,              // 10 minutes
+            pow_target_spacing: 10 * 60,            // 10 minutes
             allow_min_difficulty: false,
             no_retargeting: false,
             minimum_chain_work: 0,
             default_assume_valid: Some(
                 BlockHash::from_hex(
-                    "0000000000000000000b9835120b6817ee0e5ff0bcc6749265323a75713baf5d"
+                    "0000000000000000000b9835120b6817ee0e5ff0bcc6749265323a75713baf5d",
                 )
                 .unwrap(),
             ),
@@ -121,7 +117,7 @@ impl ConsensusParams {
         ConsensusParams {
             network: Network::Testnet,
             genesis_hash: BlockHash::from_hex(
-                "000000000933ea01ad0ee984209779bafec8473f9f36e6e15d2d241ebee8ce3c"
+                "000000000933ea01ad0ee984209779bafec8473f9f36e6e15d2d241ebee8ce3c",
             )
             .unwrap(),
             subsidy_halving_interval: 210_000,
@@ -132,13 +128,13 @@ impl ConsensusParams {
             segwit_height: 834_624,
             pow_limit_bits: 0x1d00ffff,
             pow_target_timespan: 14 * 24 * 60 * 60, // 2 weeks
-            pow_target_spacing: 10 * 60,              // 10 minutes
+            pow_target_spacing: 10 * 60,            // 10 minutes
             allow_min_difficulty: true,
             no_retargeting: false,
             minimum_chain_work: 0,
             default_assume_valid: Some(
                 BlockHash::from_hex(
-                    "000000000000004f465f02e037194370514122bf7a898e59fce40f48b47ca267"
+                    "000000000000004f465f02e037194370514122bf7a898e59fce40f48b47ca267",
                 )
                 .unwrap(),
             ),
@@ -151,7 +147,7 @@ impl ConsensusParams {
         ConsensusParams {
             network: Network::Regtest,
             genesis_hash: BlockHash::from_hex(
-                "06226b7fb5f6ea97eac9a6405e773f6a14ee45dafaf8e1f4e79f7ef2e1f62f27"
+                "06226b7fb5f6ea97eac9a6405e773f6a14ee45dafaf8e1f4e79f7ef2e1f62f27",
             )
             .unwrap(),
             subsidy_halving_interval: 150,
@@ -176,7 +172,7 @@ impl ConsensusParams {
         ConsensusParams {
             network: Network::Signet,
             genesis_hash: BlockHash::from_hex(
-                "f61eee3b63a380a477a063af32c9cdca5ccdcdfaacf412cdf5056924f45ceae0"
+                "f61eee3b63a380a477a063af32c9cdca5ccdcdfaacf412cdf5056924f45ceae0",
             )
             .unwrap(),
             subsidy_halving_interval: 210_000,
@@ -193,7 +189,7 @@ impl ConsensusParams {
             minimum_chain_work: 0,
             default_assume_valid: Some(
                 BlockHash::from_hex(
-                    "03fcc5b66f08588bbfdcf1b7e9c80e1b8d70d7c8f18e2e9a3b4c5d6e7f8a9b0c"
+                    "03fcc5b66f08588bbfdcf1b7e9c80e1b8d70d7c8f18e2e9a3b4c5d6e7f8a9b0c",
                 )
                 .unwrap(),
             ),

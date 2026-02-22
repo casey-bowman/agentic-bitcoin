@@ -19,8 +19,8 @@
 //! 4. Ancestor/descendant limits apply to the full package
 //! 5. Maximum package size: 25 transactions, 101 kvB total
 
-use crate::primitives::{Amount, Transaction, Txid};
 use crate::policy::limits::{DEFAULT_ANCESTOR_LIMIT, MIN_RELAY_FEE_RATE};
+use crate::primitives::{Amount, Transaction, Txid};
 use std::collections::{HashMap, HashSet};
 
 /// Maximum number of transactions in a package
@@ -73,31 +73,15 @@ pub enum PackageError {
     /// A duplicate transaction appears in the package.
     DuplicateTransaction(Txid),
     /// Transactions are not in topological order.
-    NotTopologicallySorted {
-        child: Txid,
-        missing_parent: Txid,
-    },
+    NotTopologicallySorted { child: Txid, missing_parent: Txid },
     /// Package contains conflicting transactions (double-spends within package).
-    ConflictingTransactions {
-        txid_a: Txid,
-        txid_b: Txid,
-    },
+    ConflictingTransactions { txid_a: Txid, txid_b: Txid },
     /// Package fee rate is below minimum.
-    InsufficientPackageFeeRate {
-        fee_rate: f64,
-        min_rate: f64,
-    },
+    InsufficientPackageFeeRate { fee_rate: f64, min_rate: f64 },
     /// A transaction in the package fails consensus checks.
-    ConsensusFailure {
-        txid: Txid,
-        reason: String,
-    },
+    ConsensusFailure { txid: Txid, reason: String },
     /// Adding this package would violate ancestor/descendant limits.
-    AncestorLimitExceeded {
-        txid: Txid,
-        count: u32,
-        limit: u32,
-    },
+    AncestorLimitExceeded { txid: Txid, count: u32, limit: u32 },
 }
 
 impl std::fmt::Display for PackageError {
@@ -113,7 +97,10 @@ impl std::fmt::Display for PackageError {
             PackageError::DuplicateTransaction(txid) => {
                 write!(f, "duplicate transaction {}", txid)
             }
-            PackageError::NotTopologicallySorted { child, missing_parent } => {
+            PackageError::NotTopologicallySorted {
+                child,
+                missing_parent,
+            } => {
                 write!(
                     f,
                     "tx {} spends output of {} which appears later or is missing",
@@ -190,7 +177,10 @@ pub fn topological_sort(transactions: &[Transaction]) -> Result<Vec<Transaction>
 
         // Remove this txid from all dependency sets
         for (other_txid, parents) in deps.iter_mut() {
-            if parents.remove(&txid) && parents.is_empty() && !result.iter().any(|t| t.txid() == *other_txid) {
+            if parents.remove(&txid)
+                && parents.is_empty()
+                && !result.iter().any(|t| t.txid() == *other_txid)
+            {
                 ready.push(*other_txid);
                 ready.sort();
             }
@@ -374,10 +364,7 @@ fn classify_package(transactions: &[Transaction]) -> PackageType {
 /// For CPFP packages, the combined fee rate of all transactions in the
 /// package must meet the minimum relay fee. This allows a high-fee child
 /// to compensate for low-fee parents.
-pub fn check_package_fee_rate(
-    total_fee: Amount,
-    total_vsize: u32,
-) -> Result<f64, PackageError> {
+pub fn check_package_fee_rate(total_fee: Amount, total_vsize: u32) -> Result<f64, PackageError> {
     let fee_rate = total_fee.as_sat() as f64 / total_vsize.max(1) as f64;
 
     if fee_rate < MIN_PACKAGE_FEE_RATE {
@@ -482,10 +469,7 @@ mod tests {
     fn test_duplicate_transaction_rejected() {
         let tx = make_tx(50_000);
         let result = validate_package(&[tx.clone(), tx]);
-        assert!(matches!(
-            result,
-            Err(PackageError::DuplicateTransaction(_))
-        ));
+        assert!(matches!(result, Err(PackageError::DuplicateTransaction(_))));
     }
 
     #[test]
@@ -614,7 +598,10 @@ mod tests {
         let result = validate_package(&txs);
         assert!(matches!(
             result,
-            Err(PackageError::TooManyTransactions { count: 26, limit: 25 })
+            Err(PackageError::TooManyTransactions {
+                count: 26,
+                limit: 25
+            })
         ));
     }
 
@@ -624,14 +611,20 @@ mod tests {
     fn regression_two_parents_one_child() {
         // Parent A and Parent B each spend different inputs, Child spends both parents
         let parent_a = Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+            )],
             vec![TxOut::new(Amount::from_sat(50_000), Script::new())],
             0,
         );
         let parent_a_txid = parent_a.txid();
 
         let parent_b = Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 1), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 1),
+                Script::new(),
+            )],
             vec![TxOut::new(Amount::from_sat(60_000), Script::new())],
             0,
         );
@@ -684,7 +677,10 @@ mod tests {
         // Diamond: A -> B, A -> C, B -> D, C -> D
         // A has two outputs so B and C don't conflict.
         let a_two_out = Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+            )],
             vec![
                 TxOut::new(Amount::from_sat(50_000), Script::new()),
                 TxOut::new(Amount::from_sat(50_000), Script::new()),
@@ -709,10 +705,13 @@ mod tests {
         );
 
         // Topological sort should handle the diamond
-        let sorted = topological_sort(&[d.clone(), c2.clone(), b2.clone(), a_two_out.clone()]).unwrap();
+        let sorted =
+            topological_sort(&[d.clone(), c2.clone(), b2.clone(), a_two_out.clone()]).unwrap();
         assert_eq!(sorted[0].txid(), a_two_out.txid()); // A first
-        // B and C can be in either order
-        let middle_txids: HashSet<Txid> = vec![sorted[1].txid(), sorted[2].txid()].into_iter().collect();
+                                                        // B and C can be in either order
+        let middle_txids: HashSet<Txid> = vec![sorted[1].txid(), sorted[2].txid()]
+            .into_iter()
+            .collect();
         assert!(middle_txids.contains(&b2_txid));
         assert!(middle_txids.contains(&c2_txid));
         assert_eq!(sorted[3].txid(), d.txid()); // D last

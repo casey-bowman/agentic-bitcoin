@@ -21,13 +21,11 @@
 //! provides the real block authorization.
 
 use crate::crypto::hashing::hash256;
-use crate::primitives::{
-    Amount, Block, Hash256, OutPoint, Transaction, TxIn, TxOut, Txid,
-};
+use crate::crypto::signing::TransactionSignatureChecker;
+use crate::primitives::{Amount, Block, Hash256, OutPoint, Transaction, TxIn, TxOut, Txid};
+use crate::script::interpreter::verify_script_with_witness;
 use crate::script::witness::Witness;
 use crate::script::{Opcodes, Script, ScriptBuilder, ScriptFlags};
-use crate::script::interpreter::verify_script_with_witness;
-use crate::crypto::signing::TransactionSignatureChecker;
 
 use std::fmt;
 
@@ -58,7 +56,10 @@ impl fmt::Display for SignetError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SignetError::MissingSignetSolution => {
-                write!(f, "no signet commitment found in coinbase OP_RETURN outputs")
+                write!(
+                    f,
+                    "no signet commitment found in coinbase OP_RETURN outputs"
+                )
             }
             SignetError::InvalidSolutionEncoding(reason) => {
                 write!(f, "invalid signet solution encoding: {}", reason)
@@ -141,9 +142,8 @@ pub fn compute_block_data_hash(block: &Block) -> Hash256 {
             if let Some(data) = extract_push_data(&script_bytes[1..]) {
                 if data.len() >= 4 && data[..4] == SIGNET_HEADER {
                     // Replace with bare OP_RETURN (no data)
-                    output.script_pubkey = ScriptBuilder::new()
-                        .push_opcode(Opcodes::OP_RETURN)
-                        .build();
+                    output.script_pubkey =
+                        ScriptBuilder::new().push_opcode(Opcodes::OP_RETURN).build();
                     break;
                 }
             }
@@ -173,10 +173,7 @@ pub fn compute_block_data_hash(block: &Block) -> Hash256 {
 /// - Single output: value = 0, scriptPubKey = challenge
 /// - Locktime: 0
 pub fn make_signet_to_spend(challenge: &Script, block_data_hash: &Hash256) -> Transaction {
-    let outpoint = OutPoint::new(
-        Txid::from_hash(*block_data_hash),
-        0xFFFFFFFF,
-    );
+    let outpoint = OutPoint::new(Txid::from_hash(*block_data_hash), 0xFFFFFFFF);
 
     let input = TxIn::new(outpoint, Script::new(), 0);
 
@@ -196,12 +193,9 @@ pub fn make_signet_to_spend(challenge: &Script, block_data_hash: &Hash256) -> Tr
 pub fn make_signet_to_sign(to_spend_txid: Txid, solution: Witness) -> Transaction {
     let outpoint = OutPoint::new(to_spend_txid, 0);
 
-    let input = TxIn::new(outpoint, Script::new(), 0)
-        .with_witness(solution);
+    let input = TxIn::new(outpoint, Script::new(), 0).with_witness(solution);
 
-    let op_return_script = ScriptBuilder::new()
-        .push_opcode(Opcodes::OP_RETURN)
-        .build();
+    let op_return_script = ScriptBuilder::new().push_opcode(Opcodes::OP_RETURN).build();
 
     let output = TxOut::new(Amount::from_sat(0), op_return_script);
 
@@ -215,15 +209,15 @@ pub fn make_signet_to_sign(to_spend_txid: Txid, solution: Witness) -> Transactio
 pub fn parse_witness_solution(data: &[u8]) -> Result<Witness, SignetError> {
     let mut cursor = 0;
 
-    let (count, consumed) = read_compact_size(data, cursor)
-        .map_err(|e| SignetError::InvalidSolutionEncoding(e))?;
+    let (count, consumed) =
+        read_compact_size(data, cursor).map_err(|e| SignetError::InvalidSolutionEncoding(e))?;
     cursor += consumed;
 
     let mut witness = Witness::new();
 
     for _ in 0..count {
-        let (item_len, consumed) = read_compact_size(data, cursor)
-            .map_err(|e| SignetError::InvalidSolutionEncoding(e))?;
+        let (item_len, consumed) =
+            read_compact_size(data, cursor).map_err(|e| SignetError::InvalidSolutionEncoding(e))?;
         cursor += consumed;
 
         if cursor + item_len as usize > data.len() {
@@ -280,9 +274,9 @@ pub fn validate_signet_block(block: &Block, challenge: &Script) -> Result<(), Si
     };
 
     verify_script_with_witness(
-        &to_sign.inputs[0].script_sig,  // empty
-        &challenge,                      // the challenge script
-        &to_sign.inputs[0].witness,      // the signet solution
+        &to_sign.inputs[0].script_sig, // empty
+        &challenge,                    // the challenge script
+        &to_sign.inputs[0].witness,    // the signet solution
         flags,
         &checker,
     )
@@ -470,7 +464,7 @@ pub fn sign_block_p2wpkh(
     secret_key_bytes: &[u8; 32],
 ) -> Result<Block, SignetError> {
     use crate::crypto::hashing::hash160;
-    use crate::crypto::signing::{TransactionSignatureChecker, sighash_type};
+    use crate::crypto::signing::{sighash_type, TransactionSignatureChecker};
 
     // Parse the secret key
     let secp = secp256k1::Secp256k1::new();
@@ -482,11 +476,7 @@ pub fn sign_block_p2wpkh(
     let compressed = pubkey.serialize();
     let pkh = hash160(&compressed);
 
-    let mut p2pkh_script_bytes = vec![
-        Opcodes::OP_DUP as u8,
-        Opcodes::OP_HASH160 as u8,
-        20,
-    ];
+    let mut p2pkh_script_bytes = vec![Opcodes::OP_DUP as u8, Opcodes::OP_HASH160 as u8, 20];
     p2pkh_script_bytes.extend_from_slice(&pkh);
     p2pkh_script_bytes.push(Opcodes::OP_EQUALVERIFY as u8);
     p2pkh_script_bytes.push(Opcodes::OP_CHECKSIG as u8);
@@ -504,8 +494,7 @@ pub fn sign_block_p2wpkh(
         if sb.is_empty() || sb[0] != Opcodes::OP_RETURN as u8 {
             return false;
         }
-        extract_push_data(&sb[1..])
-            .map_or(false, |d| d.len() >= 4 && d[..4] == SIGNET_HEADER)
+        extract_push_data(&sb[1..]).map_or(false, |d| d.len() >= 4 && d[..4] == SIGNET_HEADER)
     });
     if !has_commitment {
         let placeholder = build_signet_commitment(&Witness::new());
@@ -526,15 +515,9 @@ pub fn sign_block_p2wpkh(
     let temp_to_sign = make_signet_to_sign(to_spend_txid, Witness::new());
 
     // Step 3: Compute BIP143 sighash
-    let checker = TransactionSignatureChecker::new_witness_v0(
-        &temp_to_sign,
-        0,
-        Amount::from_sat(0),
-    );
-    let sighash = checker.compute_sighash_witness_v0(
-        &script_code,
-        sighash_type::SIGHASH_ALL,
-    );
+    let checker =
+        TransactionSignatureChecker::new_witness_v0(&temp_to_sign, 0, Amount::from_sat(0));
+    let sighash = checker.compute_sighash_witness_v0(&script_code, sighash_type::SIGHASH_ALL);
 
     // Step 4: Sign with ECDSA
     let message = secp256k1::Message::from_digest_slice(&sighash)
@@ -577,9 +560,9 @@ pub fn sign_block_p2wpkh(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::signing::{sighash_type, TransactionSignatureChecker};
     use crate::primitives::{BlockHash, BlockHeader};
-    use crate::crypto::signing::{TransactionSignatureChecker, sighash_type};
-    use secp256k1::{Secp256k1, SecretKey, Keypair, XOnlyPublicKey};
+    use secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 
     // ── Test helpers ──────────────────────────────────────────────
 
@@ -665,10 +648,13 @@ mod tests {
             .push_slice(&commitment_data)
             .build();
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            TxOut::new(Amount::from_sat(0), commitment_script),
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                TxOut::new(Amount::from_sat(0), commitment_script),
+            ],
+        );
 
         let block = make_test_block(coinbase);
         let extracted = extract_signet_solution(&block).unwrap();
@@ -678,9 +664,10 @@ mod tests {
     #[test]
     fn test_extract_signet_solution_missing() {
         // Block with no signet commitment
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![TxOut::new(Amount::from_sat(5_000_000_000), Script::new())],
+        );
         let block = make_test_block(coinbase);
 
         let result = extract_signet_solution(&block);
@@ -698,10 +685,13 @@ mod tests {
             .push_slice(&wrong_data)
             .build();
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            TxOut::new(Amount::from_sat(0), script),
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                TxOut::new(Amount::from_sat(0), script),
+            ],
+        );
         let block = make_test_block(coinbase);
 
         let result = extract_signet_solution(&block);
@@ -711,7 +701,12 @@ mod tests {
     #[test]
     fn test_extract_signet_solution_empty_block() {
         let header = BlockHeader::new(
-            0x20000000, BlockHash::zero(), Hash256::zero(), 0, 0x207fffff, 0,
+            0x20000000,
+            BlockHash::zero(),
+            Hash256::zero(),
+            0,
+            0x207fffff,
+            0,
         );
         let block = Block::new(header, vec![]);
         let result = extract_signet_solution(&block);
@@ -725,10 +720,13 @@ mod tests {
         let witness = Witness::new();
         let commitment = make_signet_output(&witness);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment,
+            ],
+        );
         let block = make_test_block(coinbase);
 
         let hash1 = compute_block_data_hash(&block);
@@ -742,24 +740,40 @@ mod tests {
         let witness = Witness::new();
         let commitment = make_signet_output(&witness);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment.clone(),
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment.clone(),
+            ],
+        );
 
         let header1 = BlockHeader::new(
-            0x20000000, BlockHash::zero(), Hash256::zero(), 100, 0x207fffff, 0,
+            0x20000000,
+            BlockHash::zero(),
+            Hash256::zero(),
+            100,
+            0x207fffff,
+            0,
         );
         let mut block1 = Block::new(header1, vec![coinbase.clone()]);
         block1.header.merkle_root = block1.compute_merkle_root();
 
         let header2 = BlockHeader::new(
-            0x20000000, BlockHash::zero(), Hash256::zero(), 200, 0x207fffff, 0,
+            0x20000000,
+            BlockHash::zero(),
+            Hash256::zero(),
+            200,
+            0x207fffff,
+            0,
         );
         let mut block2 = Block::new(header2, vec![coinbase]);
         block2.header.merkle_root = block2.compute_merkle_root();
 
-        assert_ne!(compute_block_data_hash(&block1), compute_block_data_hash(&block2));
+        assert_ne!(
+            compute_block_data_hash(&block1),
+            compute_block_data_hash(&block2)
+        );
     }
 
     #[test]
@@ -773,21 +787,30 @@ mod tests {
         witness2.push(vec![0xBB; 64]);
         let commitment2 = make_signet_output(&witness2);
 
-        let coinbase1 = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment1,
-        ]);
-        let coinbase2 = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment2,
-        ]);
+        let coinbase1 = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment1,
+            ],
+        );
+        let coinbase2 = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment2,
+            ],
+        );
 
         let block1 = make_test_block(coinbase1);
         let block2 = make_test_block(coinbase2);
 
         // After stripping the signet data, both should produce the same hash
         // because the commitment output is replaced with bare OP_RETURN
-        assert_eq!(compute_block_data_hash(&block1), compute_block_data_hash(&block2));
+        assert_eq!(
+            compute_block_data_hash(&block1),
+            compute_block_data_hash(&block2)
+        );
     }
 
     // ── Tests: make_to_spend / make_to_sign structure ────────────
@@ -930,14 +953,21 @@ mod tests {
         let solution = Witness::new();
         let commitment = build_signet_commitment(&solution);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment,
+            ],
+        );
         let block = make_test_block(coinbase);
 
         let result = validate_signet_block(&block, &challenge);
-        assert!(result.is_ok(), "OP_TRUE challenge should pass: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "OP_TRUE challenge should pass: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -945,9 +975,10 @@ mod tests {
         // Block without signet commitment should fail
         let challenge = Script::from_bytes(vec![Opcodes::OP_1 as u8]);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![TxOut::new(Amount::from_sat(5_000_000_000), Script::new())],
+        );
         let block = make_test_block(coinbase);
 
         let result = validate_signet_block(&block, &challenge);
@@ -962,10 +993,13 @@ mod tests {
         let solution = Witness::new();
         let commitment = build_signet_commitment(&solution);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment,
+            ],
+        );
         let block = make_test_block(coinbase);
 
         let result = validate_signet_block(&block, &challenge);
@@ -990,10 +1024,13 @@ mod tests {
         let placeholder_witness = Witness::new();
         let placeholder_commitment = build_signet_commitment(&placeholder_witness);
 
-        let coinbase_placeholder = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            placeholder_commitment,
-        ]);
+        let coinbase_placeholder = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                placeholder_commitment,
+            ],
+        );
         let block_template = make_test_block(coinbase_placeholder);
 
         // Step 2: Compute block data hash (same regardless of solution content)
@@ -1005,11 +1042,7 @@ mod tests {
 
         // Step 4: Compute sighash for the to_sign transaction
         // For P2WPKH, we need a BIP143 sighash with the implicit P2PKH script
-        let mut p2pkh_script_code = vec![
-            Opcodes::OP_DUP as u8,
-            Opcodes::OP_HASH160 as u8,
-            20,
-        ];
+        let mut p2pkh_script_code = vec![Opcodes::OP_DUP as u8, Opcodes::OP_HASH160 as u8, 20];
         p2pkh_script_code.extend_from_slice(&pkh);
         p2pkh_script_code.push(Opcodes::OP_EQUALVERIFY as u8);
         p2pkh_script_code.push(Opcodes::OP_CHECKSIG as u8);
@@ -1017,15 +1050,9 @@ mod tests {
 
         // Build a temporary to_sign with empty witness to compute sighash
         let temp_to_sign = make_signet_to_sign(to_spend_txid, Witness::new());
-        let checker = TransactionSignatureChecker::new_witness_v0(
-            &temp_to_sign,
-            0,
-            Amount::from_sat(0),
-        );
-        let sighash = checker.compute_sighash_witness_v0(
-            &script_code,
-            sighash_type::SIGHASH_ALL,
-        );
+        let checker =
+            TransactionSignatureChecker::new_witness_v0(&temp_to_sign, 0, Amount::from_sat(0));
+        let sighash = checker.compute_sighash_witness_v0(&script_code, sighash_type::SIGHASH_ALL);
 
         // Step 5: Sign with ECDSA
         let secp = Secp256k1::new();
@@ -1041,15 +1068,22 @@ mod tests {
 
         // Step 7: Build the real block with the signed commitment
         let real_commitment = build_signet_commitment(&solution);
-        let coinbase_real = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            real_commitment,
-        ]);
+        let coinbase_real = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                real_commitment,
+            ],
+        );
         let real_block = make_test_block(coinbase_real);
 
         // Step 8: Validate
         let result = validate_signet_block(&real_block, &challenge);
-        assert!(result.is_ok(), "P2WPKH signet validation should pass: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "P2WPKH signet validation should pass: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1067,10 +1101,13 @@ mod tests {
 
         // Build placeholder block
         let placeholder = build_signet_commitment(&Witness::new());
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            placeholder,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                placeholder,
+            ],
+        );
         let block_template = make_test_block(coinbase);
 
         let block_data_hash = compute_block_data_hash(&block_template);
@@ -1078,19 +1115,17 @@ mod tests {
         let to_spend_txid = to_spend.txid();
 
         // Compute sighash with the correct P2PKH script code
-        let mut p2pkh_script = vec![
-            Opcodes::OP_DUP as u8, Opcodes::OP_HASH160 as u8, 20,
-        ];
+        let mut p2pkh_script = vec![Opcodes::OP_DUP as u8, Opcodes::OP_HASH160 as u8, 20];
         p2pkh_script.extend_from_slice(&pkh);
         p2pkh_script.push(Opcodes::OP_EQUALVERIFY as u8);
         p2pkh_script.push(Opcodes::OP_CHECKSIG as u8);
 
         let temp_to_sign = make_signet_to_sign(to_spend_txid, Witness::new());
-        let checker = TransactionSignatureChecker::new_witness_v0(
-            &temp_to_sign, 0, Amount::from_sat(0),
-        );
+        let checker =
+            TransactionSignatureChecker::new_witness_v0(&temp_to_sign, 0, Amount::from_sat(0));
         let sighash = checker.compute_sighash_witness_v0(
-            &Script::from_bytes(p2pkh_script), sighash_type::SIGHASH_ALL,
+            &Script::from_bytes(p2pkh_script),
+            sighash_type::SIGHASH_ALL,
         );
 
         // Sign with wrong key
@@ -1105,10 +1140,13 @@ mod tests {
         solution.push(wrong_compressed);
 
         let commitment = build_signet_commitment(&solution);
-        let coinbase_real = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment,
-        ]);
+        let coinbase_real = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment,
+            ],
+        );
         let real_block = make_test_block(coinbase_real);
 
         let result = validate_signet_block(&real_block, &challenge);
@@ -1135,14 +1173,21 @@ mod tests {
         let solution = Witness::new();
         let commitment = build_signet_commitment(&solution);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            commitment,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                commitment,
+            ],
+        );
         let block = make_test_block(coinbase);
 
         let result = validate_signet_block(&block, &challenge);
-        assert!(result.is_ok(), "OP_1 OP_1 OP_EQUAL challenge should pass: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "OP_1 OP_1 OP_EQUAL challenge should pass: {:?}",
+            result
+        );
     }
 
     // ── Tests: sign_block_p2wpkh ──────────────────────────────────
@@ -1160,10 +1205,13 @@ mod tests {
 
         // Build a block with a placeholder commitment
         let placeholder = build_signet_commitment(&Witness::new());
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            placeholder,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                placeholder,
+            ],
+        );
         let block_template = make_test_block(coinbase);
 
         // Sign it
@@ -1171,7 +1219,11 @@ mod tests {
 
         // Validate it
         let result = validate_signet_block(&signed, &challenge);
-        assert!(result.is_ok(), "sign_block_p2wpkh output should validate: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "sign_block_p2wpkh output should validate: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1185,9 +1237,10 @@ mod tests {
         let pkh = pubkey_hash(&compressed);
         let challenge = make_p2wpkh_challenge(&pkh);
 
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![TxOut::new(Amount::from_sat(5_000_000_000), Script::new())],
+        );
         let block_template = make_test_block(coinbase);
 
         // Sign it — should add commitment
@@ -1198,7 +1251,11 @@ mod tests {
 
         // Validate it
         let result = validate_signet_block(&signed, &challenge);
-        assert!(result.is_ok(), "sign_block_p2wpkh should add commitment: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "sign_block_p2wpkh should add commitment: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1219,10 +1276,13 @@ mod tests {
         let challenge_b = make_p2wpkh_challenge(&pkh_b);
 
         let placeholder = build_signet_commitment(&Witness::new());
-        let coinbase = make_coinbase(1, vec![
-            TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
-            placeholder,
-        ]);
+        let coinbase = make_coinbase(
+            1,
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                placeholder,
+            ],
+        );
         let block_template = make_test_block(coinbase);
 
         // Sign with key A

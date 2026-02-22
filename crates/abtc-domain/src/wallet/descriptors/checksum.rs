@@ -43,8 +43,7 @@ impl std::error::Error for ChecksumError {}
 
 /// The 32-character set used by descriptor checksums.
 /// Maps groups of input characters to 5-bit values.
-const INPUT_CHARSET: &str =
-    "0123456789()[],'/*abcdefgh@:$%{}\
+const INPUT_CHARSET: &str = "0123456789()[],'/*abcdefgh@:$%{}\
      IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~\
      ijklmnopqrstuvwxyz`#\"\\ ";
 
@@ -61,11 +60,21 @@ fn polymod(values: &[u64]) -> u64 {
     for &v in values {
         let c0 = (c >> 35) & 0x1f;
         c = ((c & 0x7ffffffff) << 5) ^ v;
-        if c0 & 1 != 0 { c ^= 0xf5dee51989; }
-        if c0 & 2 != 0 { c ^= 0xa9fdca3312; }
-        if c0 & 4 != 0 { c ^= 0x1bab10e32d; }
-        if c0 & 8 != 0 { c ^= 0x3706b1677a; }
-        if c0 & 16 != 0 { c ^= 0x644d626ffd; }
+        if c0 & 1 != 0 {
+            c ^= 0xf5dee51989;
+        }
+        if c0 & 2 != 0 {
+            c ^= 0xa9fdca3312;
+        }
+        if c0 & 4 != 0 {
+            c ^= 0x1bab10e32d;
+        }
+        if c0 & 8 != 0 {
+            c ^= 0x3706b1677a;
+        }
+        if c0 & 16 != 0 {
+            c ^= 0x644d626ffd;
+        }
     }
     c
 }
@@ -158,8 +167,14 @@ mod tests {
 
     #[test]
     fn test_checksum_different_descriptors() {
-        let c1 = descriptor_checksum("pkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)").unwrap();
-        let c2 = descriptor_checksum("wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)").unwrap();
+        let c1 = descriptor_checksum(
+            "pkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)",
+        )
+        .unwrap();
+        let c2 = descriptor_checksum(
+            "wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)",
+        )
+        .unwrap();
         assert_ne!(c1, c2);
     }
 

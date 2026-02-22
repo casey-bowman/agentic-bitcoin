@@ -194,7 +194,12 @@ impl InvVector {
 
 impl fmt::Display for InvVector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let hash_hex: String = self.hash.iter().rev().map(|b| format!("{:02x}", b)).collect();
+        let hash_hex: String = self
+            .hash
+            .iter()
+            .rev()
+            .map(|b| format!("{:02x}", b))
+            .collect();
         write!(f, "{:?}({})", self.inv_type, hash_hex)
     }
 }

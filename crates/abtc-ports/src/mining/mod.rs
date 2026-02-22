@@ -3,10 +3,10 @@
 //! This module defines the port traits for block template creation and block submission.
 //! Implementations handle mining pool integration and template creation.
 
+use abtc_domain::consensus::{ConsensusParams, ValidationState};
+use abtc_domain::primitives::Amount;
 use abtc_domain::primitives::Block;
 use abtc_domain::script::Script;
-use abtc_domain::primitives::Amount;
-use abtc_domain::consensus::{ConsensusParams, ValidationState};
 use std::error::Error;
 
 /// A block template ready for mining.
@@ -88,5 +88,7 @@ pub trait BlockSubmitter: Send + Sync {
     /// # Returns
     ///
     /// Returns the hash of the tip of the best chain.
-    async fn get_best_block_hash(&self) -> Result<abtc_domain::primitives::BlockHash, Box<dyn Error + Send + Sync>>;
+    async fn get_best_block_hash(
+        &self,
+    ) -> Result<abtc_domain::primitives::BlockHash, Box<dyn Error + Send + Sync>>;
 }

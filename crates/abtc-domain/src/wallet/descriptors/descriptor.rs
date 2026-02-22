@@ -14,8 +14,8 @@
 
 use std::fmt;
 
-use crate::script::miniscript::Miniscript;
 use super::key_expr::DescriptorKey;
+use crate::script::miniscript::Miniscript;
 
 // ---------------------------------------------------------------------------
 // Descriptor — the top-level enum
@@ -190,8 +190,8 @@ impl fmt::Display for TrTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wallet::descriptors::key_expr::{DescriptorKey, SingleKey};
     use crate::wallet::keys::PublicKey;
-    use crate::wallet::descriptors::key_expr::{SingleKey, DescriptorKey};
 
     fn dummy_key(seed: u8) -> PublicKey {
         use crate::crypto::hashing::sha256;
@@ -255,10 +255,7 @@ mod tests {
 
     #[test]
     fn test_display_wsh_sortedmulti() {
-        let desc = Descriptor::Wsh(WshInner::SortedMulti(
-            1,
-            vec![single_dk(20), single_dk(21)],
-        ));
+        let desc = Descriptor::Wsh(WshInner::SortedMulti(1, vec![single_dk(20), single_dk(21)]));
         let s = desc.to_string();
         assert!(s.starts_with("wsh(sortedmulti(1,"));
     }

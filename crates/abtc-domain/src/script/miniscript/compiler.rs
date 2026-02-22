@@ -6,9 +6,9 @@
 //
 // Reference: https://bitcoin.sipa.be/miniscript/
 
+use super::fragment::{Miniscript, Terminal};
 use crate::script::opcodes::Opcodes;
 use crate::script::script::{Script, ScriptBuilder};
-use super::fragment::{Miniscript, Terminal};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -55,62 +55,69 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
         //   OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY
         // and the `c:` wrapper adds OP_CHECKSIG.
         Terminal::PkH(hash) => {
-            b = b.push_opcode(Opcodes::OP_DUP)
-                 .push_opcode(Opcodes::OP_HASH160)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY);
+            b = b
+                .push_opcode(Opcodes::OP_DUP)
+                .push_opcode(Opcodes::OP_HASH160)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUALVERIFY);
         }
 
         // older(n)  →  <n> OP_CHECKSEQUENCEVERIFY
         Terminal::Older(n) => {
-            b = b.push_int(*n as i64)
-                 .push_opcode(Opcodes::OP_CHECKSEQUENCEVERIFY);
+            b = b
+                .push_int(*n as i64)
+                .push_opcode(Opcodes::OP_CHECKSEQUENCEVERIFY);
         }
 
         // after(n)  →  <n> OP_CHECKLOCKTIMEVERIFY
         Terminal::After(n) => {
-            b = b.push_int(*n as i64)
-                 .push_opcode(Opcodes::OP_CHECKLOCKTIMEVERIFY);
+            b = b
+                .push_int(*n as i64)
+                .push_opcode(Opcodes::OP_CHECKLOCKTIMEVERIFY);
         }
 
         // sha256(h)  →  OP_SIZE <32> OP_EQUALVERIFY OP_SHA256 <hash> OP_EQUAL
         Terminal::Sha256(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_SHA256)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUAL);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_SHA256)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUAL);
         }
 
         // hash256(h)  →  OP_SIZE <32> OP_EQUALVERIFY OP_HASH256 <hash> OP_EQUAL
         Terminal::Hash256(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_HASH256)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUAL);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_HASH256)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUAL);
         }
 
         // ripemd160(h)  →  OP_SIZE <32> OP_EQUALVERIFY OP_RIPEMD160 <hash> OP_EQUAL
         Terminal::Ripemd160(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_RIPEMD160)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUAL);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_RIPEMD160)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUAL);
         }
 
         // hash160(h)  →  OP_SIZE <32> OP_EQUALVERIFY OP_HASH160 <hash> OP_EQUAL
         Terminal::Hash160(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_HASH160)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUAL);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_HASH160)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUAL);
         }
 
         // ── Combinators ───────────────────────────────────────────────
@@ -146,8 +153,9 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
         // or_d(X, Y)  →  [X] OP_IFDUP OP_NOTIF [Y] OP_ENDIF
         Terminal::OrD(x, y) => {
             b = encode_into(b, &x.node);
-            b = b.push_opcode(Opcodes::OP_IFDUP)
-                 .push_opcode(Opcodes::OP_NOTIF);
+            b = b
+                .push_opcode(Opcodes::OP_IFDUP)
+                .push_opcode(Opcodes::OP_NOTIF);
             b = encode_into(b, &y.node);
             b = b.push_opcode(Opcodes::OP_ENDIF);
         }
@@ -169,8 +177,7 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
                     b = b.push_opcode(Opcodes::OP_ADD);
                 }
             }
-            b = b.push_int(*k as i64)
-                 .push_opcode(Opcodes::OP_EQUAL);
+            b = b.push_int(*k as i64).push_opcode(Opcodes::OP_EQUAL);
         }
 
         // multi(k, key1, ..., keyn)  →  <k> <key1> ... <keyn> <n> OP_CHECKMULTISIG
@@ -179,8 +186,9 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
             for key in keys {
                 b = b.push_slice(&key.serialize());
             }
-            b = b.push_int(keys.len() as i64)
-                 .push_opcode(Opcodes::OP_CHECKMULTISIG);
+            b = b
+                .push_int(keys.len() as i64)
+                .push_opcode(Opcodes::OP_CHECKMULTISIG);
         }
 
         // multi_a(k, key1, ..., keyn)  →
@@ -194,8 +202,7 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
                     b = b.push_opcode(Opcodes::OP_CHECKSIGADD);
                 }
             }
-            b = b.push_int(*k as i64)
-                 .push_opcode(Opcodes::OP_NUMEQUAL);
+            b = b.push_int(*k as i64).push_opcode(Opcodes::OP_NUMEQUAL);
         }
 
         // ── Wrappers ─────────────────────────────────────────────────
@@ -221,8 +228,7 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
 
         // d:X  →  OP_DUP OP_IF [X] OP_ENDIF
         Terminal::DupIf(x) => {
-            b = b.push_opcode(Opcodes::OP_DUP)
-                 .push_opcode(Opcodes::OP_IF);
+            b = b.push_opcode(Opcodes::OP_DUP).push_opcode(Opcodes::OP_IF);
             b = encode_into(b, &x.node);
             b = b.push_opcode(Opcodes::OP_ENDIF);
         }
@@ -241,9 +247,10 @@ fn encode_into(mut b: ScriptBuilder, node: &Terminal) -> ScriptBuilder {
 
         // j:X  →  OP_SIZE OP_0NOTEQUAL OP_IF [X] OP_ENDIF
         Terminal::NonZero(x) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_opcode(Opcodes::OP_0NOTEQUAL)
-                 .push_opcode(Opcodes::OP_IF);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_opcode(Opcodes::OP_0NOTEQUAL)
+                .push_opcode(Opcodes::OP_IF);
             b = encode_into(b, &x.node);
             b = b.push_opcode(Opcodes::OP_ENDIF);
         }
@@ -273,36 +280,40 @@ fn encode_verify_child(mut b: ScriptBuilder, child: &Miniscript) -> ScriptBuilde
 
         // Hash atoms end with OP_EQUAL → replace with OP_EQUALVERIFY
         Terminal::Sha256(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_SHA256)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_SHA256)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUALVERIFY);
         }
         Terminal::Hash256(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_HASH256)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_HASH256)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUALVERIFY);
         }
         Terminal::Ripemd160(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_RIPEMD160)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_RIPEMD160)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUALVERIFY);
         }
         Terminal::Hash160(hash) => {
-            b = b.push_opcode(Opcodes::OP_SIZE)
-                 .push_int(32)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY)
-                 .push_opcode(Opcodes::OP_HASH160)
-                 .push_slice(hash)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY);
+            b = b
+                .push_opcode(Opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(Opcodes::OP_EQUALVERIFY)
+                .push_opcode(Opcodes::OP_HASH160)
+                .push_slice(hash)
+                .push_opcode(Opcodes::OP_EQUALVERIFY);
         }
 
         // multi(k, keys) ends with OP_CHECKMULTISIG → OP_CHECKMULTISIGVERIFY
@@ -311,8 +322,9 @@ fn encode_verify_child(mut b: ScriptBuilder, child: &Miniscript) -> ScriptBuilde
             for key in keys {
                 b = b.push_slice(&key.serialize());
             }
-            b = b.push_int(keys.len() as i64)
-                 .push_opcode(Opcodes::OP_CHECKMULTISIGVERIFY);
+            b = b
+                .push_int(keys.len() as i64)
+                .push_opcode(Opcodes::OP_CHECKMULTISIGVERIFY);
         }
 
         // thresh(k, subs) ends with OP_EQUAL → OP_EQUALVERIFY
@@ -323,8 +335,7 @@ fn encode_verify_child(mut b: ScriptBuilder, child: &Miniscript) -> ScriptBuilde
                     b = b.push_opcode(Opcodes::OP_ADD);
                 }
             }
-            b = b.push_int(*k as i64)
-                 .push_opcode(Opcodes::OP_EQUALVERIFY);
+            b = b.push_int(*k as i64).push_opcode(Opcodes::OP_EQUALVERIFY);
         }
 
         // Everything else: compile normally, then append OP_VERIFY
@@ -406,7 +417,7 @@ mod tests {
         // OP_DUP OP_HASH160 <20> <hash> OP_EQUALVERIFY
         assert_eq!(bytes[0], 0x76); // OP_DUP
         assert_eq!(bytes[1], 0xa9); // OP_HASH160
-        assert_eq!(bytes[2], 20);   // push 20 bytes
+        assert_eq!(bytes[2], 20); // push 20 bytes
         assert_eq!(&bytes[3..23], &hash);
         assert_eq!(bytes[23], 0x88); // OP_EQUALVERIFY
         assert_eq!(bytes.len(), 24);
@@ -439,14 +450,14 @@ mod tests {
         let bytes = script.as_bytes();
         // OP_SIZE <32> OP_EQUALVERIFY OP_SHA256 <hash> OP_EQUAL
         assert_eq!(bytes[0], 0x82); // OP_SIZE
-        // push_int(32) → OP_PUSH1 0x20  (since 32 > 16)
-        // then OP_EQUALVERIFY (0x88)
-        // then OP_SHA256 (0xa8)
-        // then <32 bytes hash>
-        // then OP_EQUAL (0x87)
+                                    // push_int(32) → OP_PUSH1 0x20  (since 32 > 16)
+                                    // then OP_EQUALVERIFY (0x88)
+                                    // then OP_SHA256 (0xa8)
+                                    // then <32 bytes hash>
+                                    // then OP_EQUAL (0x87)
         let last = *bytes.last().unwrap();
         assert_eq!(last, 0x87); // OP_EQUAL
-        // Check OP_SHA256 is somewhere in there
+                                // Check OP_SHA256 is somewhere in there
         assert!(bytes.contains(&0xa8));
     }
 
@@ -494,10 +505,7 @@ mod tests {
     fn test_encode_and_b() {
         let k1 = dummy_key(40);
         let k2 = dummy_key(41);
-        let ms = Miniscript::and_b(
-            Miniscript::pk(k1),
-            Miniscript::swap(Miniscript::pk(k2)),
-        );
+        let ms = Miniscript::and_b(Miniscript::pk(k1), Miniscript::swap(Miniscript::pk(k2)));
         let script = ms.encode();
         let bytes = script.as_bytes();
         let last = *bytes.last().unwrap();
@@ -508,10 +516,7 @@ mod tests {
     fn test_encode_or_b() {
         let k1 = dummy_key(42);
         let k2 = dummy_key(43);
-        let ms = Miniscript::or_b(
-            Miniscript::pk(k1),
-            Miniscript::swap(Miniscript::pk(k2)),
-        );
+        let ms = Miniscript::or_b(Miniscript::pk(k1), Miniscript::swap(Miniscript::pk(k2)));
         let script = ms.encode();
         let bytes = script.as_bytes();
         let last = *bytes.last().unwrap();
@@ -535,10 +540,7 @@ mod tests {
     #[test]
     fn test_encode_or_d() {
         let k1 = dummy_key(45);
-        let ms = Miniscript::or_d(
-            Miniscript::pk(k1),
-            Miniscript::ms_true(),
-        );
+        let ms = Miniscript::or_d(Miniscript::pk(k1), Miniscript::ms_true());
         let script = ms.encode();
         let bytes = script.as_bytes();
         assert!(bytes.contains(&0x73)); // OP_IFDUP
@@ -551,10 +553,7 @@ mod tests {
     fn test_encode_or_i() {
         let k1 = dummy_key(46);
         let k2 = dummy_key(47);
-        let ms = Miniscript::or_i(
-            Miniscript::pk(k1),
-            Miniscript::pk(k2),
-        );
+        let ms = Miniscript::or_i(Miniscript::pk(k1), Miniscript::pk(k2));
         let script = ms.encode();
         let bytes = script.as_bytes();
         assert_eq!(bytes[0], 0x63); // OP_IF
@@ -603,9 +602,7 @@ mod tests {
     #[test]
     fn test_encode_dupif_wrapper() {
         // d: requires Vz input — v:1 is Vz (verify(ms_true()) = V with z=true)
-        let ms = Miniscript::dupif(
-            Miniscript::verify(Miniscript::ms_true()),
-        );
+        let ms = Miniscript::dupif(Miniscript::verify(Miniscript::ms_true()));
         let script = ms.encode();
         let bytes = script.as_bytes();
         assert_eq!(bytes[0], 0x76); // OP_DUP
@@ -657,7 +654,7 @@ mod tests {
         let bytes = script.as_bytes();
         let last = *bytes.last().unwrap();
         assert_eq!(last, 0x88); // OP_EQUALVERIFY
-        // Should NOT contain plain OP_EQUAL (0x87) at the end
+                                // Should NOT contain plain OP_EQUAL (0x87) at the end
         assert!(!bytes.contains(&0x69)); // no separate OP_VERIFY
     }
 
@@ -668,10 +665,7 @@ mod tests {
         let k2 = dummy_key(81);
         let ms = Miniscript::and_v(
             Miniscript::verify(Miniscript::pk(k1)),
-            Miniscript::or_d(
-                Miniscript::pk(k2),
-                Miniscript::older(100),
-            ),
+            Miniscript::or_d(Miniscript::pk(k2), Miniscript::older(100)),
         );
         let script = ms.encode();
         let bytes = script.as_bytes();

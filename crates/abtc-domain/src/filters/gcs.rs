@@ -16,7 +16,6 @@
 //! - BIP158: <https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki>
 //! - Golomb coding: <https://en.wikipedia.org/wiki/Golomb_coding>
 
-
 // ---------------------------------------------------------------------------
 // BIP158 constants
 // ---------------------------------------------------------------------------
@@ -99,12 +98,24 @@ pub fn siphash_2_4(k0: u64, k1: u64, data: &[u8]) -> u64 {
 /// little-endian u64 values.
 pub fn key_from_block_hash(block_hash: &[u8; 32]) -> (u64, u64) {
     let k0 = u64::from_le_bytes([
-        block_hash[0], block_hash[1], block_hash[2], block_hash[3],
-        block_hash[4], block_hash[5], block_hash[6], block_hash[7],
+        block_hash[0],
+        block_hash[1],
+        block_hash[2],
+        block_hash[3],
+        block_hash[4],
+        block_hash[5],
+        block_hash[6],
+        block_hash[7],
     ]);
     let k1 = u64::from_le_bytes([
-        block_hash[8], block_hash[9], block_hash[10], block_hash[11],
-        block_hash[12], block_hash[13], block_hash[14], block_hash[15],
+        block_hash[8],
+        block_hash[9],
+        block_hash[10],
+        block_hash[11],
+        block_hash[12],
+        block_hash[13],
+        block_hash[14],
+        block_hash[15],
     ]);
     (k0, k1)
 }
@@ -435,10 +446,15 @@ impl GcsFilter {
     /// Deserialize from BIP158 format, given P and M parameters.
     pub fn deserialize(data: &[u8], p: u8, m: u64) -> Result<Self, &'static str> {
         if data.is_empty() {
-            return Ok(GcsFilter { n: 0, p, m, data: Vec::new() });
+            return Ok(GcsFilter {
+                n: 0,
+                p,
+                m,
+                data: Vec::new(),
+            });
         }
-        let (n, consumed) = crate::protocol::codec::decode_compact_size(data, 0)
-            .map_err(|_| "bad compact size")?;
+        let (n, consumed) =
+            crate::protocol::codec::decode_compact_size(data, 0).map_err(|_| "bad compact size")?;
         let n = n as u32;
         let filter_data = data[consumed..].to_vec();
         Ok(GcsFilter {
@@ -593,7 +609,11 @@ mod tests {
 
             let mut r = BitReader::new(&encoded);
             let decoded = r.read_golomb_rice(p).unwrap();
-            assert_eq!(decoded, val, "Golomb-Rice roundtrip failed for value {}", val);
+            assert_eq!(
+                decoded, val,
+                "Golomb-Rice roundtrip failed for value {}",
+                val
+            );
         }
     }
 
@@ -773,9 +793,7 @@ mod tests {
     #[test]
     fn test_larger_filter() {
         // Build a filter with many elements and verify no false negatives
-        let elements: Vec<Vec<u8>> = (0u16..200)
-            .map(|i| i.to_le_bytes().to_vec())
-            .collect();
+        let elements: Vec<Vec<u8>> = (0u16..200).map(|i| i.to_le_bytes().to_vec()).collect();
         let elem_refs: Vec<&[u8]> = elements.iter().map(|e| e.as_slice()).collect();
 
         let filter = GcsFilter::build(100, 200, BASIC_FILTER_P, BASIC_FILTER_M, &elem_refs);

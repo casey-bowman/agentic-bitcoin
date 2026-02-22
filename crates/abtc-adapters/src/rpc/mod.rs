@@ -9,13 +9,13 @@
 //! - CORS headers for browser-based clients
 //! - Graceful shutdown via stop()
 
+use abtc_ports::{RpcError, RpcHandler, RpcRequest, RpcResponse, RpcServer};
 use async_trait::async_trait;
-use abtc_ports::{RpcServer, RpcHandler, RpcRequest, RpcResponse, RpcError};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::{RwLock, Notify};
+use tokio::sync::{Notify, RwLock};
 
 /// JSON-RPC 2.0 Server Implementation with a real HTTP listener.
 ///
@@ -320,7 +320,10 @@ async fn process_single_request(
     request: RpcRequest,
 ) -> RpcResponse {
     for handler in handlers.iter() {
-        match handler.handle_request(&request.method, &request.params).await {
+        match handler
+            .handle_request(&request.method, &request.params)
+            .await
+        {
             Ok(Some(result)) => {
                 return RpcResponse::success(request.id, result);
             }
@@ -335,10 +338,7 @@ async fn process_single_request(
     }
 
     // No handler found for this method
-    RpcResponse::error(
-        request.id,
-        RpcError::method_not_found(&request.method),
-    )
+    RpcResponse::error(request.id, RpcError::method_not_found(&request.method))
 }
 
 #[cfg(test)]
@@ -396,10 +396,7 @@ mod tests {
 
     #[test]
     fn test_format_response_error() {
-        let resp = RpcResponse::error(
-            Value::Number(1.into()),
-            RpcError::method_not_found("foo"),
-        );
+        let resp = RpcResponse::error(Value::Number(1.into()), RpcError::method_not_found("foo"));
         let json = JsonRpcServer::format_response(&resp);
         assert!(json.get("error").is_some());
         assert_eq!(json["error"]["code"], -32601);

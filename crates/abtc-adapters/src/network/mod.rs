@@ -18,9 +18,9 @@
 
 pub mod v2;
 
-use async_trait::async_trait;
 use abtc_domain::primitives::{Block, Transaction};
-use abtc_ports::{NetworkMessage, PeerManager, PeerInfo};
+use abtc_ports::{NetworkMessage, PeerInfo, PeerManager};
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -110,7 +110,11 @@ fn compute_checksum(data: &[u8]) -> [u8; 4] {
 }
 
 /// Build a Bitcoin protocol "version" message payload
-fn build_version_payload(local_addr: SocketAddr, remote_addr: SocketAddr, start_height: u32) -> Vec<u8> {
+fn build_version_payload(
+    local_addr: SocketAddr,
+    remote_addr: SocketAddr,
+    start_height: u32,
+) -> Vec<u8> {
     let mut payload = Vec::with_capacity(86 + USER_AGENT.len());
 
     // Protocol version (4 bytes LE)
@@ -303,7 +307,11 @@ impl TcpPeerManager {
             );
             if conn.ban_score >= BAN_SCORE_THRESHOLD {
                 let addr = conn.info.addr;
-                tracing::warn!("Banning peer {} ({}) for exceeding threshold", peer_id, addr);
+                tracing::warn!(
+                    "Banning peer {} ({}) for exceeding threshold",
+                    peer_id,
+                    addr
+                );
 
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -355,13 +363,11 @@ impl PeerManager for TcpPeerManager {
         }
 
         // Attempt TCP connection with a 10-second timeout
-        let stream = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            TcpStream::connect(addr),
-        )
-        .await
-        .map_err(|_| format!("Connection to {} timed out", addr))?
-        .map_err(|e| format!("Failed to connect to {}: {}", addr, e))?;
+        let stream =
+            tokio::time::timeout(std::time::Duration::from_secs(10), TcpStream::connect(addr))
+                .await
+                .map_err(|_| format!("Connection to {} timed out", addr))?
+                .map_err(|e| format!("Failed to connect to {}: {}", addr, e))?;
 
         let stream = Arc::new(RwLock::new(stream));
 
@@ -376,11 +382,8 @@ impl PeerManager for TcpPeerManager {
         {
             let mut reader = stream.write().await;
             let mut buf = vec![0u8; 4096];
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                reader.read(&mut buf),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_secs(10), reader.read(&mut buf))
+                .await
             {
                 Ok(Ok(n)) if n > 0 => {
                     tracing::debug!("Received {} bytes from peer {}", n, addr);
@@ -598,12 +601,8 @@ fn encode_network_message(msg: &NetworkMessage) -> (String, Vec<u8>) {
             }
             ("inv".to_string(), payload)
         }
-        NetworkMessage::Ping { nonce } => {
-            ("ping".to_string(), nonce.to_le_bytes().to_vec())
-        }
-        NetworkMessage::Pong { nonce } => {
-            ("pong".to_string(), nonce.to_le_bytes().to_vec())
-        }
+        NetworkMessage::Ping { nonce } => ("ping".to_string(), nonce.to_le_bytes().to_vec()),
+        NetworkMessage::Pong { nonce } => ("pong".to_string(), nonce.to_le_bytes().to_vec()),
         NetworkMessage::Verack => ("verack".to_string(), Vec::new()),
         NetworkMessage::Headers { headers } => {
             let mut payload = Vec::new();

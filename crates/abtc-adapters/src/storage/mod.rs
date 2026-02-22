@@ -13,9 +13,9 @@ pub mod rocksdb_store;
 #[cfg(feature = "rocksdb-storage")]
 pub use rocksdb_store::{RocksDbBlockStore, RocksDbChainStateStore};
 
-use async_trait::async_trait;
 use abtc_domain::primitives::{Block, BlockHash, Txid};
 use abtc_ports::{BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo};
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -49,7 +49,10 @@ impl InMemoryBlockStore {
         let mut heights = self.block_heights.write().await;
         heights.insert(genesis_hash, 0);
 
-        tracing::debug!("Initialized block store with genesis block: {}", genesis_hash);
+        tracing::debug!(
+            "Initialized block store with genesis block: {}",
+            genesis_hash
+        );
     }
 }
 
@@ -87,7 +90,10 @@ impl BlockStore for InMemoryBlockStore {
         Ok(())
     }
 
-    async fn get_block(&self, hash: &BlockHash) -> Result<Option<Block>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_block(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<Block>, Box<dyn std::error::Error + Send + Sync>> {
         let blocks = self.blocks.read().await;
         Ok(blocks.get(hash).cloned())
     }
@@ -95,22 +101,33 @@ impl BlockStore for InMemoryBlockStore {
     async fn get_block_header(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<abtc_domain::primitives::BlockHeader>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<
+        Option<abtc_domain::primitives::BlockHeader>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let blocks = self.blocks.read().await;
         Ok(blocks.get(hash).map(|b| b.header.clone()))
     }
 
-    async fn has_block(&self, hash: &BlockHash) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    async fn has_block(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let blocks = self.blocks.read().await;
         Ok(blocks.contains_key(hash))
     }
 
-    async fn get_best_block_hash(&self) -> Result<BlockHash, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_best_block_hash(
+        &self,
+    ) -> Result<BlockHash, Box<dyn std::error::Error + Send + Sync>> {
         let best = self.best_block_hash.read().await;
         Ok(*best)
     }
 
-    async fn get_block_height(&self, hash: &BlockHash) -> Result<Option<u32>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_block_height(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<u32>, Box<dyn std::error::Error + Send + Sync>> {
         let heights = self.block_heights.read().await;
         Ok(heights.get(hash).copied())
     }
@@ -135,7 +152,10 @@ impl InMemoryChainStateStore {
     pub async fn init_with_genesis(&self, genesis_hash: BlockHash) {
         let mut tip = self.chain_tip.write().await;
         *tip = (genesis_hash, 0);
-        tracing::debug!("Initialized chain state store with genesis tip: {}", genesis_hash);
+        tracing::debug!(
+            "Initialized chain state store with genesis tip: {}",
+            genesis_hash
+        );
     }
 }
 
@@ -156,7 +176,11 @@ impl ChainStateStore for InMemoryChainStateStore {
         Ok(utxos.get(&(*txid, vout)).cloned())
     }
 
-    async fn has_utxo(&self, txid: &Txid, vout: u32) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    async fn has_utxo(
+        &self,
+        txid: &Txid,
+        vout: u32,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let utxos = self.utxos.read().await;
         Ok(utxos.contains_key(&(*txid, vout)))
     }
@@ -180,19 +204,27 @@ impl ChainStateStore for InMemoryChainStateStore {
         Ok(())
     }
 
-    async fn get_best_chain_tip(&self) -> Result<(BlockHash, u32), Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_best_chain_tip(
+        &self,
+    ) -> Result<(BlockHash, u32), Box<dyn std::error::Error + Send + Sync>> {
         let tip = self.chain_tip.read().await;
         Ok(*tip)
     }
 
-    async fn write_chain_tip(&self, hash: BlockHash, height: u32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn write_chain_tip(
+        &self,
+        hash: BlockHash,
+        height: u32,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut tip = self.chain_tip.write().await;
         *tip = (hash, height);
         tracing::debug!("Updated chain tip to {} (height {})", hash, height);
         Ok(())
     }
 
-    async fn get_utxo_set_info(&self) -> Result<UtxoSetInfo, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_utxo_set_info(
+        &self,
+    ) -> Result<UtxoSetInfo, Box<dyn std::error::Error + Send + Sync>> {
         let utxos = self.utxos.read().await;
         let tip = self.chain_tip.read().await;
 
@@ -211,9 +243,7 @@ impl ChainStateStore for InMemoryChainStateStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use abtc_domain::primitives::{
-        Amount, Block, BlockHash, BlockHeader, Hash256, TxOut, Txid,
-    };
+    use abtc_domain::primitives::{Amount, Block, BlockHash, BlockHeader, Hash256, TxOut, Txid};
     use abtc_domain::Script;
 
     fn make_header(prev: BlockHash, nonce: u32) -> BlockHeader {
@@ -470,11 +500,25 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            store.get_utxo(&txid, 0).await.unwrap().unwrap().output.value.as_sat(),
+            store
+                .get_utxo(&txid, 0)
+                .await
+                .unwrap()
+                .unwrap()
+                .output
+                .value
+                .as_sat(),
             1_000
         );
         assert_eq!(
-            store.get_utxo(&txid, 2).await.unwrap().unwrap().output.value.as_sat(),
+            store
+                .get_utxo(&txid, 2)
+                .await
+                .unwrap()
+                .unwrap()
+                .output
+                .value
+                .as_sat(),
             3_000
         );
 
@@ -491,7 +535,10 @@ mod tests {
         let txid = Txid::from_hash(Hash256::from_bytes([0xCB; 32]));
 
         store
-            .write_utxo_set(vec![(txid, 0, make_utxo_entry(5_000_000_000, 0, true))], vec![])
+            .write_utxo_set(
+                vec![(txid, 0, make_utxo_entry(5_000_000_000, 0, true))],
+                vec![],
+            )
             .await
             .unwrap();
 
@@ -559,6 +606,9 @@ mod tests {
         store.store_block(&b2, 5).await.unwrap(); // lower height
 
         let best = store.get_best_block_hash().await.unwrap();
-        assert_eq!(best, h1, "best block hash should not regress to a lower height");
+        assert_eq!(
+            best, h1,
+            "best block hash should not regress to a lower height"
+        );
     }
 }

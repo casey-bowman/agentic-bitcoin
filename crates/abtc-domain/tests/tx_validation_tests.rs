@@ -4,10 +4,10 @@
 //! `tx_valid.json` and `tx_invalid.json` test vectors.
 
 use abtc_domain::consensus::rules;
-use abtc_domain::primitives::{Transaction, TxIn, TxOut, OutPoint, Txid, Amount};
 use abtc_domain::primitives::hash::Hash256;
-use abtc_domain::script::Script;
+use abtc_domain::primitives::{Amount, OutPoint, Transaction, TxIn, TxOut, Txid};
 use abtc_domain::script::witness::Witness;
+use abtc_domain::script::Script;
 
 /// Helper to create a coinbase transaction
 fn make_coinbase(value_sat: i64) -> Transaction {
@@ -28,7 +28,12 @@ fn make_coinbase(value_sat: i64) -> Transaction {
 }
 
 /// Helper to create a simple non-coinbase transaction
-fn make_simple_tx(version: i32, num_inputs: usize, num_outputs: usize, output_value: i64) -> Transaction {
+fn make_simple_tx(
+    version: i32,
+    num_inputs: usize,
+    num_outputs: usize,
+    output_value: i64,
+) -> Transaction {
     let mut inputs = Vec::new();
     for i in 0..num_inputs {
         inputs.push(TxIn {
@@ -90,20 +95,29 @@ fn test_valid_zero_output_value() {
 #[test]
 fn test_invalid_no_inputs() {
     let tx = make_simple_tx(1, 0, 1, 50_000);
-    assert!(rules::check_transaction(&tx).is_err(), "Transaction with no inputs should be invalid");
+    assert!(
+        rules::check_transaction(&tx).is_err(),
+        "Transaction with no inputs should be invalid"
+    );
 }
 
 #[test]
 fn test_invalid_no_outputs() {
     let tx = make_simple_tx(1, 1, 0, 0);
-    assert!(rules::check_transaction(&tx).is_err(), "Transaction with no outputs should be invalid");
+    assert!(
+        rules::check_transaction(&tx).is_err(),
+        "Transaction with no outputs should be invalid"
+    );
 }
 
 #[test]
 fn test_invalid_negative_output() {
     let mut tx = make_simple_tx(1, 1, 1, 50_000);
     tx.outputs[0].value = Amount::from_sat(-1);
-    assert!(rules::check_transaction(&tx).is_err(), "Negative output value should be invalid");
+    assert!(
+        rules::check_transaction(&tx).is_err(),
+        "Negative output value should be invalid"
+    );
 }
 
 #[test]
@@ -111,7 +125,10 @@ fn test_invalid_too_large_output() {
     // Bitcoin has a 21M BTC cap = 2_100_000_000_000_000 satoshis
     let mut tx = make_simple_tx(1, 1, 1, 50_000);
     tx.outputs[0].value = Amount::from_sat(2_100_000_100_000_000);
-    assert!(rules::check_transaction(&tx).is_err(), "Output exceeding 21M BTC should be invalid");
+    assert!(
+        rules::check_transaction(&tx).is_err(),
+        "Output exceeding 21M BTC should be invalid"
+    );
 }
 
 #[test]
@@ -119,7 +136,10 @@ fn test_invalid_duplicate_inputs() {
     let mut tx = make_simple_tx(1, 2, 1, 50_000);
     // Make both inputs reference the same outpoint
     tx.inputs[1].previous_output = tx.inputs[0].previous_output;
-    assert!(rules::check_transaction(&tx).is_err(), "Duplicate inputs should be invalid");
+    assert!(
+        rules::check_transaction(&tx).is_err(),
+        "Duplicate inputs should be invalid"
+    );
 }
 
 // ========== RBF signal tests ==========
@@ -135,18 +155,24 @@ fn test_rbf_signaling() {
 
     // Sequence = 0xFFFFFFFE does NOT signal
     tx.inputs[0].sequence = 0xFFFFFFFE;
-    assert!(!tx.signals_rbf(), "Sequence 0xFFFFFFFE should NOT signal RBF");
+    assert!(
+        !tx.signals_rbf(),
+        "Sequence 0xFFFFFFFE should NOT signal RBF"
+    );
 
     // Sequence = 0xFFFFFFFF does NOT signal
     tx.inputs[0].sequence = 0xFFFFFFFF;
-    assert!(!tx.signals_rbf(), "Sequence 0xFFFFFFFF should NOT signal RBF");
+    assert!(
+        !tx.signals_rbf(),
+        "Sequence 0xFFFFFFFF should NOT signal RBF"
+    );
 }
 
 // ========== Policy limit tests ==========
 
 #[test]
 fn test_policy_standard_tx_checks() {
-    use abtc_domain::policy::limits::{MempoolLimits, LimitError};
+    use abtc_domain::policy::limits::{LimitError, MempoolLimits};
 
     // Dust output check (below 546 satoshis)
     assert!(matches!(
@@ -308,7 +334,10 @@ fn test_serialize_deserialize_legacy_roundtrip() {
 
     // Re-serialize should produce identical bytes
     let bytes2 = tx2.serialize_legacy();
-    assert_eq!(bytes, bytes2, "Double round-trip should produce identical bytes");
+    assert_eq!(
+        bytes, bytes2,
+        "Double round-trip should produce identical bytes"
+    );
 }
 
 #[test]
@@ -353,7 +382,11 @@ fn test_deserialize_exact_rejects_trailing_data() {
 
     // deserialize should succeed (returns consumed count)
     let (_, consumed) = Transaction::deserialize(&bytes).unwrap();
-    assert_eq!(consumed, bytes.len() - 1, "Should not consume trailing byte");
+    assert_eq!(
+        consumed,
+        bytes.len() - 1,
+        "Should not consume trailing byte"
+    );
 
     // deserialize_exact should fail
     assert_eq!(
@@ -387,7 +420,10 @@ fn test_txid_survives_roundtrip() {
     let tx2 = Transaction::deserialize_exact(&bytes).unwrap();
     let txid2 = tx2.txid();
 
-    assert_eq!(txid1, txid2, "Txid should survive serialize/deserialize round-trip");
+    assert_eq!(
+        txid1, txid2,
+        "Txid should survive serialize/deserialize round-trip"
+    );
 }
 
 #[test]
@@ -431,14 +467,12 @@ fn test_deserialize_real_mainnet_tx() {
 
 // ========== End-to-end signing + verification tests ==========
 
+use abtc_domain::crypto::signing::{SpentOutput, TransactionSignatureChecker};
 use abtc_domain::wallet::keys::PrivateKey;
 use abtc_domain::wallet::tx_builder::{
-    InputInfo, TransactionBuilder, make_p2pkh_script, make_p2wpkh_script, make_p2tr_script,
+    make_p2pkh_script, make_p2tr_script, make_p2wpkh_script, InputInfo, TransactionBuilder,
 };
-use abtc_domain::crypto::signing::{TransactionSignatureChecker, SpentOutput};
-use abtc_domain::{
-    ScriptFlags, verify_script, verify_script_with_witness,
-};
+use abtc_domain::{verify_script, verify_script_with_witness, ScriptFlags};
 
 /// E2E: Generate key → build P2PKH tx → sign → verify script succeeds
 #[test]
@@ -463,7 +497,10 @@ fn test_e2e_p2pkh_sign_and_verify() {
             sequence: 0xFFFFFFFF,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))) // OP_1
+        .add_output(TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        )) // OP_1
         .sign()
         .unwrap();
 
@@ -471,13 +508,12 @@ fn test_e2e_p2pkh_sign_and_verify() {
     let checker = TransactionSignatureChecker::new(&tx, 0, input_amount);
     let flags = ScriptFlags::new(ScriptFlags::NONE);
 
-    let result = verify_script(
-        &tx.inputs[0].script_sig,
-        &script_pubkey,
-        flags,
-        &checker,
+    let result = verify_script(&tx.inputs[0].script_sig, &script_pubkey, flags, &checker);
+    assert!(
+        result.is_ok(),
+        "P2PKH script verification failed: {:?}",
+        result.err()
     );
-    assert!(result.is_ok(), "P2PKH script verification failed: {:?}", result.err());
 }
 
 /// E2E: Generate key → build P2WPKH tx → sign → serialize → deserialize → verify witness
@@ -503,13 +539,19 @@ fn test_e2e_p2wpkh_sign_serialize_deserialize_verify() {
             sequence: 0xFFFFFFFE,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(190_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(190_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
     // 4. Serialize (includes witness data)
     let wire_bytes = tx.serialize();
-    assert!(wire_bytes.len() > 0, "Serialized transaction should not be empty");
+    assert!(
+        wire_bytes.len() > 0,
+        "Serialized transaction should not be empty"
+    );
 
     // 5. Deserialize from wire format
     let tx2 = Transaction::deserialize_exact(&wire_bytes).unwrap();
@@ -519,11 +561,22 @@ fn test_e2e_p2wpkh_sign_serialize_deserialize_verify() {
     assert_eq!(tx2.inputs.len(), 1);
     assert_eq!(tx2.outputs.len(), 1);
     assert_eq!(tx2.outputs[0].value, Amount::from_sat(190_000));
-    assert!(tx2.inputs[0].script_sig.is_empty(), "P2WPKH should have empty scriptSig");
-    assert_eq!(tx2.inputs[0].witness.len(), 2, "Witness should have [sig, pubkey]");
+    assert!(
+        tx2.inputs[0].script_sig.is_empty(),
+        "P2WPKH should have empty scriptSig"
+    );
+    assert_eq!(
+        tx2.inputs[0].witness.len(),
+        2,
+        "Witness should have [sig, pubkey]"
+    );
 
     // 7. Verify txids match (txid excludes witness, so both should agree)
-    assert_eq!(tx.txid(), tx2.txid(), "Txid should survive serialization round-trip");
+    assert_eq!(
+        tx.txid(),
+        tx2.txid(),
+        "Txid should survive serialization round-trip"
+    );
 
     // 8. Verify the witness satisfies the scriptPubKey
     let checker2 = TransactionSignatureChecker::new_witness_v0(&tx2, 0, input_amount);
@@ -536,7 +589,11 @@ fn test_e2e_p2wpkh_sign_serialize_deserialize_verify() {
         flags,
         &checker2,
     );
-    assert!(result.is_ok(), "P2WPKH witness verification failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "P2WPKH witness verification failed: {:?}",
+        result.err()
+    );
 }
 
 /// E2E: Sign P2PKH, serialize legacy (no witness), deserialize, verify
@@ -558,7 +615,10 @@ fn test_e2e_p2pkh_legacy_roundtrip() {
             sequence: 0xFFFFFFFF,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(40_000), make_p2pkh_script(&[0x11; 20])))
+        .add_output(TxOut::new(
+            Amount::from_sat(40_000),
+            make_p2pkh_script(&[0x11; 20]),
+        ))
         .sign()
         .unwrap();
 
@@ -579,7 +639,11 @@ fn test_e2e_p2pkh_legacy_roundtrip() {
         ScriptFlags::new(ScriptFlags::NONE),
         &checker,
     );
-    assert!(result.is_ok(), "P2PKH legacy roundtrip verification failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "P2PKH legacy roundtrip verification failed: {:?}",
+        result.err()
+    );
 }
 
 /// E2E: Multiple inputs (mixed P2PKH + P2WPKH), sign all, verify all
@@ -614,7 +678,10 @@ fn test_e2e_multi_input_mixed_signing() {
             sequence: 0xFFFFFFFE,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(250_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(250_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
@@ -626,7 +693,11 @@ fn test_e2e_multi_input_mixed_signing() {
         ScriptFlags::new(ScriptFlags::NONE),
         &checker0,
     );
-    assert!(r0.is_ok(), "Multi-input P2PKH verification failed: {:?}", r0.err());
+    assert!(
+        r0.is_ok(),
+        "Multi-input P2PKH verification failed: {:?}",
+        r0.err()
+    );
 
     // Verify input 1 (P2WPKH - witness)
     let checker1 = TransactionSignatureChecker::new_witness_v0(&tx, 1, amount2);
@@ -637,7 +708,11 @@ fn test_e2e_multi_input_mixed_signing() {
         ScriptFlags::new(ScriptFlags::NONE),
         &checker1,
     );
-    assert!(r1.is_ok(), "Multi-input P2WPKH verification failed: {:?}", r1.err());
+    assert!(
+        r1.is_ok(),
+        "Multi-input P2WPKH verification failed: {:?}",
+        r1.err()
+    );
 
     // Serialize round-trip (mixed tx has witness data)
     let wire = tx.serialize();
@@ -647,21 +722,29 @@ fn test_e2e_multi_input_mixed_signing() {
 
     // Verify both inputs after round-trip
     let checker0b = TransactionSignatureChecker::new(&tx2, 0, amount1);
-    assert!(verify_script(
-        &tx2.inputs[0].script_sig,
-        &p2pkh_script,
-        ScriptFlags::new(ScriptFlags::NONE),
-        &checker0b,
-    ).is_ok(), "P2PKH verification failed after round-trip");
+    assert!(
+        verify_script(
+            &tx2.inputs[0].script_sig,
+            &p2pkh_script,
+            ScriptFlags::new(ScriptFlags::NONE),
+            &checker0b,
+        )
+        .is_ok(),
+        "P2PKH verification failed after round-trip"
+    );
 
     let checker1b = TransactionSignatureChecker::new_witness_v0(&tx2, 1, amount2);
-    assert!(verify_script_with_witness(
-        &tx2.inputs[1].script_sig,
-        &p2wpkh_script,
-        &tx2.inputs[1].witness,
-        ScriptFlags::new(ScriptFlags::NONE),
-        &checker1b,
-    ).is_ok(), "P2WPKH verification failed after round-trip");
+    assert!(
+        verify_script_with_witness(
+            &tx2.inputs[1].script_sig,
+            &p2wpkh_script,
+            &tx2.inputs[1].witness,
+            ScriptFlags::new(ScriptFlags::NONE),
+            &checker1b,
+        )
+        .is_ok(),
+        "P2WPKH verification failed after round-trip"
+    );
 }
 
 /// E2E: Wrong key should fail verification
@@ -685,7 +768,10 @@ fn test_e2e_wrong_key_fails_verification() {
             sequence: 0xFFFFFFFF,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
@@ -697,13 +783,16 @@ fn test_e2e_wrong_key_fails_verification() {
         ScriptFlags::new(ScriptFlags::NONE),
         &checker,
     );
-    assert!(result.is_err(), "Verification should fail with wrong signing key");
+    assert!(
+        result.is_err(),
+        "Verification should fail with wrong signing key"
+    );
 }
 
 // E2E: Generate key → build P2TR tx → sign → serialize → deserialize → verify
 #[test]
 fn test_e2e_p2tr_sign_serialize_deserialize_verify() {
-    use secp256k1::{Secp256k1, Keypair, XOnlyPublicKey, Scalar};
+    use secp256k1::{Keypair, Scalar, Secp256k1, XOnlyPublicKey};
 
     // 1. Generate keypair and derive P2TR output key
     let key = PrivateKey::generate(true, true);
@@ -712,9 +801,7 @@ fn test_e2e_p2tr_sign_serialize_deserialize_verify() {
     let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
 
     // Compute tweaked output key (key-path-only)
-    let tweak = abtc_domain::crypto::taproot::taptweak_hash(
-        &internal_xonly.serialize(), None,
-    );
+    let tweak = abtc_domain::crypto::taproot::taptweak_hash(&internal_xonly.serialize(), None);
     let scalar = Scalar::from_be_bytes(tweak).unwrap();
     let (output_key, _) = internal_xonly.add_tweak(&secp, &scalar).unwrap();
 
@@ -732,14 +819,28 @@ fn test_e2e_p2tr_sign_serialize_deserialize_verify() {
             sequence: 0xFFFFFFFE,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(190_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(190_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
     // 3. Verify structure
-    assert!(tx.inputs[0].script_sig.is_empty(), "P2TR should have empty scriptSig");
-    assert_eq!(tx.inputs[0].witness.len(), 1, "P2TR witness should have [signature]");
-    assert_eq!(tx.inputs[0].witness.get(0).unwrap().len(), 64, "Schnorr sig is 64 bytes");
+    assert!(
+        tx.inputs[0].script_sig.is_empty(),
+        "P2TR should have empty scriptSig"
+    );
+    assert_eq!(
+        tx.inputs[0].witness.len(),
+        1,
+        "P2TR witness should have [signature]"
+    );
+    assert_eq!(
+        tx.inputs[0].witness.get(0).unwrap().len(),
+        64,
+        "Schnorr sig is 64 bytes"
+    );
 
     // 4. Serialize and deserialize
     let wire_bytes = tx.serialize();
@@ -762,14 +863,18 @@ fn test_e2e_p2tr_sign_serialize_deserialize_verify() {
         flags,
         &checker,
     );
-    assert!(result.is_ok(), "P2TR key-path verification failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "P2TR key-path verification failed: {:?}",
+        result.err()
+    );
 }
 
 // E2E: P2TR address creation → tx signing → verification round-trip
 #[test]
 fn test_e2e_p2tr_address_to_verification() {
-    use secp256k1::{Secp256k1, Keypair, XOnlyPublicKey};
     use abtc_domain::wallet::address::Address;
+    use secp256k1::{Keypair, Secp256k1, XOnlyPublicKey};
 
     let key = PrivateKey::generate(true, true);
     let secp = Secp256k1::new();
@@ -794,7 +899,10 @@ fn test_e2e_p2tr_address_to_verification() {
             sequence: 0xFFFFFFFE,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(490_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(490_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
@@ -813,7 +921,11 @@ fn test_e2e_p2tr_address_to_verification() {
         flags,
         &checker,
     );
-    assert!(result.is_ok(), "P2TR address-based verification failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "P2TR address-based verification failed: {:?}",
+        result.err()
+    );
 }
 
 // ── Taproot script-path spending E2E tests ────────────────────────
@@ -821,9 +933,9 @@ fn test_e2e_p2tr_address_to_verification() {
 // E2E: Build a TapTree with two scripts, spend via script-path leaf 0
 #[test]
 fn test_e2e_taproot_script_path_single_checksig() {
-    use secp256k1::{Secp256k1, Keypair, XOnlyPublicKey};
-    use abtc_domain::crypto::taproot::{TapTree, TapLeaf};
+    use abtc_domain::crypto::taproot::{TapLeaf, TapTree};
     use abtc_domain::wallet::tx_builder::TapScriptPath;
+    use secp256k1::{Keypair, Secp256k1, XOnlyPublicKey};
 
     // 1. Generate keypair
     let key = PrivateKey::generate(true, true);
@@ -870,16 +982,36 @@ fn test_e2e_taproot_script_path_single_checksig() {
                 leaf_hash,
             }),
         })
-        .add_output(TxOut::new(Amount::from_sat(290_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(290_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
     // 6. Verify witness structure: [signature, script, control_block]
-    assert!(tx.inputs[0].script_sig.is_empty(), "Taproot has empty scriptSig");
-    assert_eq!(tx.inputs[0].witness.len(), 3, "Script-path witness = [sig, script, control]");
-    assert_eq!(tx.inputs[0].witness.get(0).unwrap().len(), 64, "Schnorr sig is 64 bytes");
-    assert_eq!(tx.inputs[0].witness.get(1).unwrap(), tap_script_bytes.as_slice());
-    assert_eq!(tx.inputs[0].witness.get(2).unwrap(), control_bytes.as_slice());
+    assert!(
+        tx.inputs[0].script_sig.is_empty(),
+        "Taproot has empty scriptSig"
+    );
+    assert_eq!(
+        tx.inputs[0].witness.len(),
+        3,
+        "Script-path witness = [sig, script, control]"
+    );
+    assert_eq!(
+        tx.inputs[0].witness.get(0).unwrap().len(),
+        64,
+        "Schnorr sig is 64 bytes"
+    );
+    assert_eq!(
+        tx.inputs[0].witness.get(1).unwrap(),
+        tap_script_bytes.as_slice()
+    );
+    assert_eq!(
+        tx.inputs[0].witness.get(2).unwrap(),
+        control_bytes.as_slice()
+    );
 
     // 7. Verify through the script interpreter
     let spent_outputs = vec![SpentOutput {
@@ -896,14 +1028,18 @@ fn test_e2e_taproot_script_path_single_checksig() {
         flags,
         &checker,
     );
-    assert!(result.is_ok(), "Taproot script-path verification failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Taproot script-path verification failed: {:?}",
+        result.err()
+    );
 }
 
 // E2E: Spend via the OP_1 (always-true) leaf — no signature needed
 #[test]
 fn test_e2e_taproot_script_path_op1_leaf() {
+    use abtc_domain::crypto::taproot::{TapLeaf, TapTree};
     use secp256k1::{Secp256k1, SecretKey};
-    use abtc_domain::crypto::taproot::{TapTree, TapLeaf};
 
     // 1. Create internal key
     let secp = Secp256k1::new();
@@ -934,7 +1070,10 @@ fn test_e2e_taproot_script_path_op1_leaf() {
             Script::new(), // empty scriptSig
             0xFFFFFFFE,
         )],
-        vec![TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 
@@ -960,14 +1099,18 @@ fn test_e2e_taproot_script_path_op1_leaf() {
         flags,
         &checker,
     );
-    assert!(result.is_ok(), "OP_1 script-path should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "OP_1 script-path should succeed: {:?}",
+        result.err()
+    );
 }
 
 // E2E: Wrong script in witness should fail verification
 #[test]
 fn test_e2e_taproot_script_path_wrong_script_fails() {
+    use abtc_domain::crypto::taproot::{TapLeaf, TapTree};
     use secp256k1::{Secp256k1, SecretKey};
-    use abtc_domain::crypto::taproot::{TapTree, TapLeaf};
 
     let secp = Secp256k1::new();
     let secret = SecretKey::from_slice(&[0x77; 32]).unwrap();
@@ -992,7 +1135,10 @@ fn test_e2e_taproot_script_path_wrong_script_fails() {
             Script::new(),
             0xFFFFFFFE,
         )],
-        vec![TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 
@@ -1016,5 +1162,8 @@ fn test_e2e_taproot_script_path_wrong_script_fails() {
         &checker,
     );
     // Should fail because OP_2 was not committed in the tree
-    assert!(result.is_err(), "Wrong script should fail merkle commitment");
+    assert!(
+        result.is_err(),
+        "Wrong script should fail merkle commitment"
+    );
 }

@@ -8,21 +8,21 @@
 //! - Simple mining provider
 //! - Basic wallet adapter
 
-pub mod storage;
+pub mod mempool;
+pub mod mining;
 pub mod network;
 pub mod rpc;
-pub mod mining;
+pub mod storage;
 pub mod wallet;
-pub mod mempool;
 
 // Re-exports for convenience
+pub use mempool::InMemoryMempool;
+pub use mining::SimpleMiner;
+pub use network::{StubPeerManager, TcpPeerManager};
+pub use rpc::JsonRpcServer;
 pub use storage::{InMemoryBlockStore, InMemoryChainStateStore};
 #[cfg(feature = "rocksdb-storage")]
 pub use storage::{RocksDbBlockStore, RocksDbChainStateStore};
-pub use network::{StubPeerManager, TcpPeerManager};
-pub use rpc::JsonRpcServer;
-pub use mining::SimpleMiner;
-pub use wallet::InMemoryWallet;
 pub use wallet::FileBasedWalletStore;
+pub use wallet::InMemoryWallet;
 pub use wallet::PersistentWallet;
-pub use mempool::InMemoryMempool;

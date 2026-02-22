@@ -10,10 +10,12 @@ pub mod script;
 pub mod witness;
 
 pub use interpreter::{
-    ScriptError, ScriptFlags, ScriptInterpreter, SignatureChecker,
-    NoSigChecker, verify_script, verify_script_with_witness, is_push_only,
+    is_push_only, verify_script, verify_script_with_witness, NoSigChecker, ScriptError,
+    ScriptFlags, ScriptInterpreter, SignatureChecker,
 };
-pub use miniscript::{Miniscript, Terminal, MiniscriptType, BaseType, DecodeError as MiniscriptDecodeError};
+pub use miniscript::{
+    BaseType, DecodeError as MiniscriptDecodeError, Miniscript, MiniscriptType, Terminal,
+};
 pub use opcodes::Opcodes;
 pub use script::{Script, ScriptBuilder};
 pub use witness::Witness;

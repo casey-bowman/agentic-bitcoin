@@ -136,11 +136,7 @@ impl FeeEstimator {
     /// `confirmed_fees` should contain `(fee_amount, tx_vsize, blocks_waited)`
     /// for each non-coinbase transaction. If `blocks_waited` is not known,
     /// pass 1 (the optimistic assumption).
-    pub fn process_block(
-        &mut self,
-        height: u32,
-        confirmed_fees: &[(Amount, usize, u32)],
-    ) {
+    pub fn process_block(&mut self, height: u32, confirmed_fees: &[(Amount, usize, u32)]) {
         if height <= self.best_height && self.best_height > 0 {
             return; // already processed or reorg (ignore for now)
         }
@@ -197,19 +193,13 @@ impl FeeEstimator {
     /// Convenience: process a block given the raw transactions and a fee
     /// calculator closure.  `fee_for_tx` should return `Some((fee, vsize))`
     /// for non-coinbase transactions and `None` for coinbase.
-    pub fn process_block_txs<F>(
-        &mut self,
-        height: u32,
-        txs: &[Transaction],
-        fee_for_tx: F,
-    ) where
+    pub fn process_block_txs<F>(&mut self, height: u32, txs: &[Transaction], fee_for_tx: F)
+    where
         F: Fn(&Transaction) -> Option<(Amount, usize)>,
     {
         let confirmed: Vec<(Amount, usize, u32)> = txs
             .iter()
-            .filter_map(|tx| {
-                fee_for_tx(tx).map(|(fee, vsize)| (fee, vsize, 1u32))
-            })
+            .filter_map(|tx| fee_for_tx(tx).map(|(fee, vsize)| (fee, vsize, 1u32)))
             .collect();
         self.process_block(height, &confirmed);
     }
@@ -301,7 +291,13 @@ impl FeeEstimator {
             .collect();
 
         if medians.is_empty() {
-            return (MIN_FEE_RATE, MIN_FEE_RATE, MIN_FEE_RATE, MIN_FEE_RATE, MIN_FEE_RATE);
+            return (
+                MIN_FEE_RATE,
+                MIN_FEE_RATE,
+                MIN_FEE_RATE,
+                MIN_FEE_RATE,
+                MIN_FEE_RATE,
+            );
         }
 
         medians.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -339,9 +335,8 @@ mod tests {
         let mut est = FeeEstimator::new();
 
         // Simulate a block with 5 transactions at 10 sat/vB.
-        let fees: Vec<(Amount, usize, u32)> = (0..5)
-            .map(|_| (Amount::from_sat(2500), 250, 1))
-            .collect();
+        let fees: Vec<(Amount, usize, u32)> =
+            (0..5).map(|_| (Amount::from_sat(2500), 250, 1)).collect();
 
         est.process_block(1, &fees);
 
@@ -450,7 +445,10 @@ mod tests {
         use abtc_domain::script::Script;
 
         let tx = abtc_domain::primitives::Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+            )],
             vec![TxOut::new(Amount::from_sat(49_000), Script::new())],
             0,
         );

@@ -15,7 +15,7 @@ use abtc_domain::primitives::{Amount, OutPoint, Transaction, TxIn, TxOut, Txid};
 use abtc_domain::script::Script;
 use abtc_domain::wallet::keys::PrivateKey;
 use abtc_domain::wallet::tx_builder::{
-    InputInfo, TransactionBuilder, make_p2pkh_script, make_p2wpkh_script,
+    make_p2pkh_script, make_p2wpkh_script, InputInfo, TransactionBuilder,
 };
 
 /// Create a block header that passes PoW validation.
@@ -112,7 +112,11 @@ fn test_connect_coinbase_only_block() {
     // Should create 1 UTXO (coinbase output)
     assert_eq!(result.created.len(), 1, "Should create 1 UTXO");
     assert!(result.spent.is_empty(), "Should not spend anything");
-    assert_eq!(result.total_fees.as_sat(), 0, "No fees in coinbase-only block");
+    assert_eq!(
+        result.total_fees.as_sat(),
+        0,
+        "No fees in coinbase-only block"
+    );
 }
 
 #[test]
@@ -125,14 +129,22 @@ fn test_connect_block_updates_utxo_set() {
     let result0 = connect_block(&block0, 0, &utxo_set, &params, false).unwrap();
     utxo_set.apply_connect(&result0);
 
-    assert_eq!(utxo_set.len(), 1, "UTXO set should have 1 entry after block 0");
+    assert_eq!(
+        utxo_set.len(),
+        1,
+        "UTXO set should have 1 entry after block 0"
+    );
 
     // Connect block 1
     let block1 = make_block_with_coinbase(bh([0x01; 32]), 1, 5_000_000_000);
     let result1 = connect_block(&block1, 1, &utxo_set, &params, false).unwrap();
     utxo_set.apply_connect(&result1);
 
-    assert_eq!(utxo_set.len(), 2, "UTXO set should have 2 entries after block 1");
+    assert_eq!(
+        utxo_set.len(),
+        2,
+        "UTXO set should have 2 entries after block 1"
+    );
 }
 
 #[test]
@@ -228,7 +240,10 @@ fn test_missing_utxo_rejected() {
     let spend_tx = Transaction::new(
         1,
         vec![spend_input],
-        vec![TxOut::new(Amount::from_sat(1000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(1000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 
@@ -262,7 +277,10 @@ fn test_double_spend_in_block_rejected() {
             sequence: 0xFFFFFFFF,
             witness: abtc_domain::script::witness::Witness::new(),
         }],
-        vec![TxOut::new(Amount::from_sat(50_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(50_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
     let spend2 = Transaction::new(
@@ -273,7 +291,10 @@ fn test_double_spend_in_block_rejected() {
             sequence: 0xFFFFFFFF,
             witness: abtc_domain::script::witness::Witness::new(),
         }],
-        vec![TxOut::new(Amount::from_sat(40_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(40_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 
@@ -305,7 +326,10 @@ fn test_premature_coinbase_spend_rejected() {
     utxo_set.add(
         OutPoint::new(coinbase_txid, 0),
         UtxoEntry {
-            output: TxOut::new(Amount::from_sat(5_000_000_000), Script::from_bytes(vec![0x51])),
+            output: TxOut::new(
+                Amount::from_sat(5_000_000_000),
+                Script::from_bytes(vec![0x51]),
+            ),
             height: 0,
             is_coinbase: true, // THIS is a coinbase output
         },
@@ -320,7 +344,10 @@ fn test_premature_coinbase_spend_rejected() {
             sequence: 0xFFFFFFFF,
             witness: abtc_domain::script::witness::Witness::new(),
         }],
-        vec![TxOut::new(Amount::from_sat(4_999_990_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(4_999_990_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 
@@ -328,7 +355,10 @@ fn test_premature_coinbase_spend_rejected() {
 
     let result = connect_block(&block, 50, &utxo_set, &params, false);
     assert!(
-        matches!(result, Err(ConnectBlockError::PrematureCoinbaseSpend { .. })),
+        matches!(
+            result,
+            Err(ConnectBlockError::PrematureCoinbaseSpend { .. })
+        ),
         "Should reject premature coinbase spend at height 50"
     );
 }
@@ -343,7 +373,10 @@ fn test_mature_coinbase_spend_accepted() {
     utxo_set.add(
         OutPoint::new(coinbase_txid, 0),
         UtxoEntry {
-            output: TxOut::new(Amount::from_sat(5_000_000_000), Script::from_bytes(vec![0x51])),
+            output: TxOut::new(
+                Amount::from_sat(5_000_000_000),
+                Script::from_bytes(vec![0x51]),
+            ),
             height: 0,
             is_coinbase: true,
         },
@@ -358,14 +391,21 @@ fn test_mature_coinbase_spend_accepted() {
             sequence: 0xFFFFFFFF,
             witness: abtc_domain::script::witness::Witness::new(),
         }],
-        vec![TxOut::new(Amount::from_sat(4_999_990_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(4_999_990_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 
     let block = make_block_with_spend(bh([0u8; 32]), 100, 5_000_000_000, spend_tx, 10_000);
 
     let result = connect_block(&block, 100, &utxo_set, &params, false);
-    assert!(result.is_ok(), "Should accept coinbase spend at height 100: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Should accept coinbase spend at height 100: {:?}",
+        result.err()
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -398,7 +438,10 @@ fn test_connect_disconnect_roundtrip() {
             sequence: 0xFFFFFFFF,
             witness: abtc_domain::script::witness::Witness::new(),
         }],
-        vec![TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
     let block = make_block_with_spend(bh([0u8; 32]), 1, 5_000_000_000, spend_tx, 10_000);
@@ -454,7 +497,10 @@ fn test_connect_block_with_real_p2pkh_scripts() {
             sequence: 0xFFFFFFFF,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
@@ -463,7 +509,11 @@ fn test_connect_block_with_real_p2pkh_scripts() {
 
     // Connect with script verification ENABLED
     let result = connect_block(&block, 1, &utxo_set, &params, true);
-    assert!(result.is_ok(), "P2PKH script verification during block connect failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "P2PKH script verification during block connect failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -496,7 +546,10 @@ fn test_connect_block_with_real_p2wpkh_scripts() {
             sequence: 0xFFFFFFFE,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(190_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(190_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
@@ -504,7 +557,11 @@ fn test_connect_block_with_real_p2wpkh_scripts() {
     let block = make_block_with_spend(bh([0u8; 32]), 1, 5_000_000_000, signed_tx, fee);
 
     let result = connect_block(&block, 1, &utxo_set, &params, true);
-    assert!(result.is_ok(), "P2WPKH script verification during block connect failed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "P2WPKH script verification during block connect failed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -538,7 +595,10 @@ fn test_connect_block_bad_signature_rejected() {
             sequence: 0xFFFFFFFF,
             tap_script_path: None,
         })
-        .add_output(TxOut::new(Amount::from_sat(90_000), Script::from_bytes(vec![0x51])))
+        .add_output(TxOut::new(
+            Amount::from_sat(90_000),
+            Script::from_bytes(vec![0x51]),
+        ))
         .sign()
         .unwrap();
 
@@ -546,7 +606,10 @@ fn test_connect_block_bad_signature_rejected() {
 
     let result = connect_block(&block, 1, &utxo_set, &params, true);
     assert!(
-        matches!(result, Err(ConnectBlockError::ScriptVerificationFailed { .. })),
+        matches!(
+            result,
+            Err(ConnectBlockError::ScriptVerificationFailed { .. })
+        ),
         "Should reject block with bad signature: {:?}",
         result
     );
@@ -603,7 +666,11 @@ fn test_halving_reduces_subsidy() {
     // Claiming 25 BTC should succeed
     let block = make_block_with_coinbase(bh([0u8; 32]), halving_interval, 2_500_000_000);
     let result = connect_block(&block, halving_interval, &utxo_set, &params, false);
-    assert!(result.is_ok(), "25 BTC coinbase should work after halving: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "25 BTC coinbase should work after halving: {:?}",
+        result.err()
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -634,7 +701,10 @@ fn test_inflation_rejected() {
             sequence: 0xFFFFFFFF,
             witness: abtc_domain::script::witness::Witness::new(),
         }],
-        vec![TxOut::new(Amount::from_sat(200_000), Script::from_bytes(vec![0x51]))],
+        vec![TxOut::new(
+            Amount::from_sat(200_000),
+            Script::from_bytes(vec![0x51]),
+        )],
         0,
     );
 

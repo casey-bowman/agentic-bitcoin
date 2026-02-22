@@ -31,9 +31,9 @@
 
 use std::fmt;
 
-use crate::wallet::keys::PublicKey;
 use super::fragment::Miniscript;
 use super::types::{BaseType, MiniscriptType};
+use crate::wallet::keys::PublicKey;
 
 // ---------------------------------------------------------------------------
 // Policy AST
@@ -106,7 +106,9 @@ impl fmt::Display for Policy {
             Policy::WeightedOr(entries) => {
                 write!(f, "or(")?;
                 for (i, (w, p)) in entries.iter().enumerate() {
-                    if i > 0 { write!(f, ",")?; }
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
                     write!(f, "{}@{}", w, p)?;
                 }
                 write!(f, ")")
@@ -442,10 +444,7 @@ impl<'a> PolicyParser<'a> {
                 }
                 self.expect_char(')')?;
                 if k == 0 || k > subs.len() {
-                    return Err(PolicyParseError::InvalidThreshold {
-                        k,
-                        n: subs.len(),
-                    });
+                    return Err(PolicyParseError::InvalidThreshold { k, n: subs.len() });
                 }
                 Ok(Policy::Thresh(k, subs))
             }
@@ -463,10 +462,7 @@ impl<'a> PolicyParser<'a> {
                 }
                 self.expect_char(')')?;
                 if k == 0 || k > keys.len() {
-                    return Err(PolicyParseError::InvalidThreshold {
-                        k,
-                        n: keys.len(),
-                    });
+                    return Err(PolicyParseError::InvalidThreshold { k, n: keys.len() });
                 }
                 Ok(Policy::Multi(k, keys))
             }
@@ -600,10 +596,7 @@ fn compile_or(left: &Policy, right: &Policy) -> Result<Miniscript, CompileError>
 }
 
 /// Try to build the most efficient OR from two already-compiled Miniscripts.
-fn try_compile_or_pair(
-    left: Miniscript,
-    right: Miniscript,
-) -> Result<Miniscript, CompileError> {
+fn try_compile_or_pair(left: Miniscript, right: Miniscript) -> Result<Miniscript, CompileError> {
     // 1. or_d: left must be Bdu, right must be B
     if is_bdu(&left.ty) && right.ty.base == BaseType::B {
         return Ok(Miniscript::or_d(left, right));
@@ -712,9 +705,9 @@ fn hex_decode(hex: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::BaseType;
     use super::*;
     use crate::crypto::hashing::sha256;
-    use super::super::types::BaseType;
 
     /// Helper: create a dummy compressed public key from a byte seed.
     fn dummy_key(seed: u8) -> PublicKey {
@@ -972,10 +965,7 @@ mod tests {
 
     #[test]
     fn test_compile_weighted_or() {
-        let entries = vec![
-            (3, Policy::PubKey(dummy_key(93))),
-            (1, Policy::Older(144)),
-        ];
+        let entries = vec![(3, Policy::PubKey(dummy_key(93))), (1, Policy::Older(144))];
         let ms = compile(&Policy::WeightedOr(entries)).unwrap();
         assert_eq!(ms.base_type(), BaseType::B);
     }
@@ -1032,10 +1022,7 @@ mod tests {
 
     #[test]
     fn test_display_roundtrip_and() {
-        let policy = Policy::And(
-            Box::new(Policy::Older(144)),
-            Box::new(Policy::After(1000)),
-        );
+        let policy = Policy::And(Box::new(Policy::Older(144)), Box::new(Policy::After(1000)));
         let s = policy.to_string();
         let reparsed = parse_policy(&s).unwrap();
         assert_eq!(policy, reparsed);

@@ -25,9 +25,7 @@
 //! The acceptor returns `PackageResult` which the sync manager uses to
 //! decide whether to relay the package to other peers.
 
-use abtc_domain::policy::packages::{
-    self, PackageError, PackageType, MAX_PACKAGE_VSIZE,
-};
+use abtc_domain::policy::packages::{self, PackageError, PackageType, MAX_PACKAGE_VSIZE};
 use abtc_domain::primitives::{Amount, Transaction, Txid};
 use abtc_ports::{ChainStateStore, MempoolPort};
 use std::collections::HashMap;
@@ -118,10 +116,7 @@ pub struct PackageAcceptor {
 
 impl PackageAcceptor {
     /// Create a new package acceptor.
-    pub fn new(
-        chain_state: Arc<dyn ChainStateStore>,
-        mempool: Arc<dyn MempoolPort>,
-    ) -> Self {
+    pub fn new(chain_state: Arc<dyn ChainStateStore>, mempool: Arc<dyn MempoolPort>) -> Self {
         PackageAcceptor {
             chain_state,
             mempool,
@@ -212,8 +207,8 @@ impl PackageAcceptor {
         }
 
         // 4. Check aggregate fee rate
-        let package_fee_rate = packages::check_package_fee_rate(total_fee, total_vsize)
-            .map_err(|e| match e {
+        let package_fee_rate =
+            packages::check_package_fee_rate(total_fee, total_vsize).map_err(|e| match e {
                 PackageError::InsufficientPackageFeeRate { fee_rate, min_rate } => {
                     PackageAcceptError::InsufficientPackageFeeRate { fee_rate, min_rate }
                 }
@@ -226,13 +221,12 @@ impl PackageAcceptor {
         for (i, tx) in transactions.iter().enumerate() {
             let (txid, fee, vsize) = &tx_fees[i];
 
-            self.mempool
-                .add_transaction(tx)
-                .await
-                .map_err(|e| PackageAcceptError::MempoolRejection {
+            self.mempool.add_transaction(tx).await.map_err(|e| {
+                PackageAcceptError::MempoolRejection {
                     txid: *txid,
                     reason: e.to_string(),
-                })?;
+                }
+            })?;
 
             tracing::info!(
                 "Package: accepted tx {} ({}/{}, fee={}, vsize={})",
@@ -272,10 +266,10 @@ impl PackageAcceptor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use abtc_domain::primitives::{BlockHash, Hash256, OutPoint, TxIn, TxOut};
     use abtc_domain::Script;
     use abtc_ports::{MempoolEntry, MempoolInfo, UtxoEntry, UtxoSetInfo};
+    use async_trait::async_trait;
     use std::collections::HashMap;
     use tokio::sync::RwLock;
 
@@ -486,10 +480,7 @@ mod tests {
         let mut acceptor = PackageAcceptor::new(chain_state, mempool.clone());
         acceptor.set_verify_scripts(false);
 
-        let result = acceptor
-            .accept_package(&[parent, child])
-            .await
-            .unwrap();
+        let result = acceptor.accept_package(&[parent, child]).await.unwrap();
 
         assert_eq!(result.accepted.len(), 2);
         assert_eq!(result.package_type, PackageType::ChildWithParents);
@@ -615,20 +606,14 @@ mod tests {
         chain_state.add_utxo(ftxid_b, 0, make_utxo(50_000)).await;
 
         let parent_a = Transaction::v1(
-            vec![TxIn::final_input(
-                OutPoint::new(ftxid_a, 0),
-                Script::new(),
-            )],
+            vec![TxIn::final_input(OutPoint::new(ftxid_a, 0), Script::new())],
             vec![TxOut::new(Amount::from_sat(49_000), Script::new())],
             0,
         );
         let parent_a_txid = parent_a.txid();
 
         let parent_b = Transaction::v1(
-            vec![TxIn::final_input(
-                OutPoint::new(ftxid_b, 0),
-                Script::new(),
-            )],
+            vec![TxIn::final_input(OutPoint::new(ftxid_b, 0), Script::new())],
             vec![TxOut::new(Amount::from_sat(49_000), Script::new())],
             0,
         );
@@ -693,10 +678,7 @@ mod tests {
         let mut acceptor = PackageAcceptor::new(chain_state, mempool.clone());
         acceptor.set_verify_scripts(false);
 
-        let result = acceptor
-            .accept_package(&[parent, child])
-            .await
-            .unwrap();
+        let result = acceptor.accept_package(&[parent, child]).await.unwrap();
 
         // Parent fee: 100_000 - 90_000 = 10_000
         // Child fee: 50_000 - 45_000 = 5_000
@@ -762,10 +744,7 @@ mod tests {
         let mut acceptor = PackageAcceptor::new(chain_state, mempool);
         acceptor.set_verify_scripts(false);
 
-        let result = acceptor
-            .accept_package(&[parent, child])
-            .await
-            .unwrap();
+        let result = acceptor.accept_package(&[parent, child]).await.unwrap();
 
         // Parent fee = 100_000 - 95_000 = 5_000
         assert_eq!(result.accepted[0].fee.as_sat(), 5_000);

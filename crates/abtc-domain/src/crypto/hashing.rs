@@ -82,7 +82,7 @@ mod tests {
     fn test_double_sha256() {
         let data = b"hello";
         let hash = hash256(data);
-        
+
         // Verify it produces a 32-byte result
         assert_eq!(hash.as_bytes().len(), 32);
     }
@@ -91,7 +91,7 @@ mod tests {
     fn test_sha256() {
         let data = b"hello";
         let hash = sha256(data);
-        
+
         // Verify it produces a 32-byte result
         assert_eq!(hash.as_bytes().len(), 32);
     }
@@ -100,7 +100,7 @@ mod tests {
     fn test_hash160() {
         let data = b"hello";
         let hash = hash160(data);
-        
+
         // Verify it produces a 20-byte result
         assert_eq!(hash.len(), 20);
     }
@@ -123,7 +123,7 @@ mod tests {
         let data = b"test data";
         let hash1 = hash256(data);
         let hash2 = hash256(data);
-        
+
         // Same input should produce same hash
         assert_eq!(hash1, hash2);
     }

@@ -76,7 +76,8 @@ pub fn derive_session_keys(
     responder_pubkey: &[u8],
 ) -> SessionKeys {
     // Salt = SHA256("bitcoin_v2_shared_secret_extract" || initiator_pk || responder_pk)
-    let mut salt_preimage = Vec::with_capacity(32 + initiator_pubkey.len() + responder_pubkey.len());
+    let mut salt_preimage =
+        Vec::with_capacity(32 + initiator_pubkey.len() + responder_pubkey.len());
     salt_preimage.extend_from_slice(b"bitcoin_v2_shared_secret_extract");
     salt_preimage.extend_from_slice(initiator_pubkey);
     salt_preimage.extend_from_slice(responder_pubkey);
@@ -92,24 +93,39 @@ pub fn derive_session_keys(
     let hk = Hkdf::<Sha256>::new(Some(&salt), shared_secret);
 
     let mut initiator_length_key = [0u8; 32];
-    hk.expand(b"bitcoin_v2_shared_secret_expand_initiator_length_key", &mut initiator_length_key)
-        .expect("HKDF expand failed for initiator_length_key");
+    hk.expand(
+        b"bitcoin_v2_shared_secret_expand_initiator_length_key",
+        &mut initiator_length_key,
+    )
+    .expect("HKDF expand failed for initiator_length_key");
 
     let mut initiator_key = [0u8; 32];
-    hk.expand(b"bitcoin_v2_shared_secret_expand_initiator_key", &mut initiator_key)
-        .expect("HKDF expand failed for initiator_key");
+    hk.expand(
+        b"bitcoin_v2_shared_secret_expand_initiator_key",
+        &mut initiator_key,
+    )
+    .expect("HKDF expand failed for initiator_key");
 
     let mut responder_length_key = [0u8; 32];
-    hk.expand(b"bitcoin_v2_shared_secret_expand_responder_length_key", &mut responder_length_key)
-        .expect("HKDF expand failed for responder_length_key");
+    hk.expand(
+        b"bitcoin_v2_shared_secret_expand_responder_length_key",
+        &mut responder_length_key,
+    )
+    .expect("HKDF expand failed for responder_length_key");
 
     let mut responder_key = [0u8; 32];
-    hk.expand(b"bitcoin_v2_shared_secret_expand_responder_key", &mut responder_key)
-        .expect("HKDF expand failed for responder_key");
+    hk.expand(
+        b"bitcoin_v2_shared_secret_expand_responder_key",
+        &mut responder_key,
+    )
+    .expect("HKDF expand failed for responder_key");
 
     let mut session_id = [0u8; 32];
-    hk.expand(b"bitcoin_v2_shared_secret_expand_session_id", &mut session_id)
-        .expect("HKDF expand failed for session_id");
+    hk.expand(
+        b"bitcoin_v2_shared_secret_expand_session_id",
+        &mut session_id,
+    )
+    .expect("HKDF expand failed for session_id");
 
     SessionKeys {
         initiator_key,
@@ -174,15 +190,16 @@ impl FSChaCha20Poly1305 {
         let nonce_bytes = self.nonce();
         let nonce = AeadNonce::from_slice(&nonce_bytes);
 
-        let cipher = ChaCha20Poly1305::new_from_slice(&self.key)
-            .expect("BIP324: invalid key length");
+        let cipher =
+            ChaCha20Poly1305::new_from_slice(&self.key).expect("BIP324: invalid key length");
 
         let payload = chacha20poly1305::aead::Payload {
             msg: plaintext,
             aad,
         };
 
-        let ciphertext = cipher.encrypt(nonce, payload)
+        let ciphertext = cipher
+            .encrypt(nonce, payload)
             .expect("BIP324: encryption failed");
 
         self.packet_counter += 1;
@@ -202,8 +219,8 @@ impl FSChaCha20Poly1305 {
         let nonce_bytes = self.nonce();
         let nonce = AeadNonce::from_slice(&nonce_bytes);
 
-        let cipher = ChaCha20Poly1305::new_from_slice(&self.key)
-            .expect("BIP324: invalid key length");
+        let cipher =
+            ChaCha20Poly1305::new_from_slice(&self.key).expect("BIP324: invalid key length");
 
         let payload = chacha20poly1305::aead::Payload {
             msg: ciphertext,
@@ -241,7 +258,8 @@ impl FSChaCha20Poly1305 {
 
         // The rekey ciphertext is 32 + 16 = 48 bytes.
         // We take the first 32 bytes as the new key.
-        let rekey_ct = cipher.encrypt(nonce, payload)
+        let rekey_ct = cipher
+            .encrypt(nonce, payload)
             .expect("BIP324: rekey encryption failed");
 
         self.key.copy_from_slice(&rekey_ct[..32]);
@@ -566,7 +584,9 @@ mod tests {
         for i in 0..225u32 {
             let msg = format!("msg{}", i);
             let ct = enc.encrypt(b"", msg.as_bytes());
-            let pt = dec.decrypt(b"", &ct).expect(&format!("decrypt failed at {}", i));
+            let pt = dec
+                .decrypt(b"", &ct)
+                .expect(&format!("decrypt failed at {}", i));
             assert_eq!(pt, msg.as_bytes());
         }
 
@@ -622,8 +642,18 @@ mod tests {
     #[test]
     fn test_v2_message_id_roundtrip() {
         let commands = [
-            "addr", "block", "getdata", "getheaders", "headers",
-            "inv", "ping", "pong", "tx", "getblocks", "sendheaders", "version",
+            "addr",
+            "block",
+            "getdata",
+            "getheaders",
+            "headers",
+            "inv",
+            "ping",
+            "pong",
+            "tx",
+            "getblocks",
+            "sendheaders",
+            "version",
         ];
         for cmd in commands {
             let id = V2MessageId::from_command(cmd).unwrap();

@@ -3,7 +3,7 @@
 //! Complete representation of block headers and blocks with merkle root computation.
 
 use crate::crypto::hashing::hash256;
-use crate::primitives::hash::{Hash256, BlockHash};
+use crate::primitives::hash::{BlockHash, Hash256};
 use crate::primitives::transaction::Transaction;
 use std::fmt;
 
@@ -53,14 +53,14 @@ impl BlockHeader {
     /// Serialize the block header (80 bytes)
     fn serialize(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(80);
-        
+
         data.extend_from_slice(&self.version.to_le_bytes());
         data.extend_from_slice(self.prev_block_hash.as_bytes());
         data.extend_from_slice(self.merkle_root.as_bytes());
         data.extend_from_slice(&self.time.to_le_bytes());
         data.extend_from_slice(&self.bits.to_le_bytes());
         data.extend_from_slice(&self.nonce.to_le_bytes());
-        
+
         data
     }
 
@@ -203,43 +203,43 @@ impl BlockLocator {
 /// Serialize transaction for merkle root computation (non-witness)
 fn serialize_tx_for_merkle(tx: &Transaction) -> Vec<u8> {
     let mut data = Vec::new();
-    
+
     // Version
     data.extend_from_slice(&tx.version.to_le_bytes());
-    
+
     // Input count
     data.extend_from_slice(&compact_size(tx.inputs.len() as u64));
-    
+
     // Inputs (without witness)
     for input in &tx.inputs {
         // Previous output
         data.extend_from_slice(input.previous_output.txid.as_bytes());
         data.extend_from_slice(&input.previous_output.vout.to_le_bytes());
-        
+
         // Script sig
         let script_bytes = input.script_sig.as_bytes();
         data.extend_from_slice(&compact_size(script_bytes.len() as u64));
         data.extend_from_slice(script_bytes);
-        
+
         // Sequence
         data.extend_from_slice(&input.sequence.to_le_bytes());
     }
-    
+
     // Output count
     data.extend_from_slice(&compact_size(tx.outputs.len() as u64));
-    
+
     // Outputs
     for output in &tx.outputs {
         data.extend_from_slice(&output.value.as_sat().to_le_bytes());
-        
+
         let script_bytes = output.script_pubkey.as_bytes();
         data.extend_from_slice(&compact_size(script_bytes.len() as u64));
         data.extend_from_slice(script_bytes);
     }
-    
+
     // Locktime
     data.extend_from_slice(&tx.lock_time.to_le_bytes());
-    
+
     data
 }
 
@@ -266,7 +266,7 @@ fn compact_size(value: u64) -> Vec<u8> {
 fn decode_compact(bits: u32) -> u128 {
     let exponent = (bits >> 24) as u32;
     let mantissa = bits & 0xffffff;
-    
+
     if exponent <= 3 {
         (mantissa >> (8 * (3 - exponent))) as u128
     } else {
@@ -280,14 +280,7 @@ mod tests {
 
     #[test]
     fn test_block_header_creation() {
-        let header = BlockHeader::new(
-            1,
-            BlockHash::zero(),
-            Hash256::zero(),
-            0,
-            0,
-            0,
-        );
+        let header = BlockHeader::new(1, BlockHash::zero(), Hash256::zero(), 0, 0, 0);
         assert_eq!(header.version, 1);
     }
 
@@ -300,14 +293,7 @@ mod tests {
 
     #[test]
     fn test_block_merkle_root_empty() {
-        let header = BlockHeader::new(
-            1,
-            BlockHash::zero(),
-            Hash256::zero(),
-            0,
-            0,
-            0,
-        );
+        let header = BlockHeader::new(1, BlockHash::zero(), Hash256::zero(), 0, 0, 0);
         let block = Block::new(header, vec![]);
         assert_eq!(block.compute_merkle_root(), Hash256::zero());
     }

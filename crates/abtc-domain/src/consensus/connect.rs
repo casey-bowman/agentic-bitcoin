@@ -17,7 +17,7 @@
 use crate::consensus::params::ConsensusParams;
 use crate::consensus::rules::COINBASE_MATURITY;
 use crate::consensus::validation::ValidationError;
-use crate::crypto::signing::{TransactionSignatureChecker, SpentOutput};
+use crate::crypto::signing::{SpentOutput, TransactionSignatureChecker};
 use crate::primitives::{Amount, Block, OutPoint, TxOut};
 use crate::script::{verify_script_with_witness, ScriptFlags};
 
@@ -80,10 +80,7 @@ pub enum ConnectBlockError {
         output_total: i64,
     },
     /// The coinbase reward exceeds the allowed subsidy + fees.
-    CoinbaseOverpay {
-        allowed: i64,
-        actual: i64,
-    },
+    CoinbaseOverpay { allowed: i64, actual: i64 },
     /// A transaction's script verification failed.
     ScriptVerificationFailed {
         tx_index: usize,
@@ -254,9 +251,9 @@ pub fn connect_block(
                     let witness_version = if spk_bytes.len() >= 2 {
                         // Witness programs: OP_0..OP_16 followed by push of 2..40 bytes
                         match spk_bytes[0] {
-                            0x00 => Some(0),                  // witness v0
+                            0x00 => Some(0),                          // witness v0
                             0x51..=0x60 => Some(spk_bytes[0] - 0x50), // witness v1..v16
-                            _ => None,                        // not a witness program
+                            _ => None,                                // not a witness program
                         }
                     } else {
                         None
@@ -290,7 +287,11 @@ pub fn connect_block(
                         }
                         Some(0) => {
                             // SegWit v0 (P2WPKH, P2WSH)
-                            TransactionSignatureChecker::new_witness_v0(tx, in_idx, utxo.output.value)
+                            TransactionSignatureChecker::new_witness_v0(
+                                tx,
+                                in_idx,
+                                utxo.output.value,
+                            )
                         }
                         _ => {
                             // Legacy or unknown witness version

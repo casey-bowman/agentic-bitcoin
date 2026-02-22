@@ -126,15 +126,20 @@ impl OrphanPool {
                 .insert(txid);
         }
 
-        self.orphans.insert(txid, OrphanEntry {
-            tx,
-            time_added: now,
-            from_peer,
-            size,
-        });
+        self.orphans.insert(
+            txid,
+            OrphanEntry {
+                tx,
+                time_added: now,
+                from_peer,
+                size,
+            },
+        );
 
         match evicted {
-            Some(evicted_txid) => AddOrphanResult::AddedAfterEviction { evicted: evicted_txid },
+            Some(evicted_txid) => AddOrphanResult::AddedAfterEviction {
+                evicted: evicted_txid,
+            },
             None => AddOrphanResult::Added,
         }
     }
@@ -448,10 +453,14 @@ mod tests {
         let txid = tx.txid();
 
         pool.add_orphan(tx, 1, 1000);
-        assert!(!pool.get_orphans_by_prev(&OutPoint::new(parent_txid, 0)).is_empty());
+        assert!(!pool
+            .get_orphans_by_prev(&OutPoint::new(parent_txid, 0))
+            .is_empty());
 
         let _ = pool.remove_orphan(&txid);
-        assert!(pool.get_orphans_by_prev(&OutPoint::new(parent_txid, 0)).is_empty());
+        assert!(pool
+            .get_orphans_by_prev(&OutPoint::new(parent_txid, 0))
+            .is_empty());
     }
 
     #[test]

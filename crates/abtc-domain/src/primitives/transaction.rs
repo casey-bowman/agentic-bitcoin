@@ -4,12 +4,12 @@
 //! sequence numbers, and witness data.
 
 use crate::crypto::hashing::hash256;
-use crate::script::Script;
 use crate::script::witness::Witness;
+use crate::script::Script;
 use std::fmt;
 
-pub use crate::primitives::hash::{Hash256, Txid, Wtxid};
 pub use crate::primitives::amount::Amount;
+pub use crate::primitives::hash::{Hash256, Txid, Wtxid};
 
 /// Sequence number constants
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -167,7 +167,7 @@ impl Transaction {
     pub fn coinbase(_height: u32, coinbase_script: Script, outputs: Vec<TxOut>) -> Self {
         let mut coinbase_input = TxIn::final_input(OutPoint::coinbase(), coinbase_script);
         coinbase_input.sequence = 0xffffffff;
-        
+
         Transaction {
             version: 1,
             inputs: vec![coinbase_input],
@@ -195,9 +195,9 @@ impl Transaction {
 
     /// Calculate total output value
     pub fn total_output_value(&self) -> Amount {
-        self.outputs.iter().fold(Amount::from_sat(0), |acc, out| {
-            acc + out.value
-        })
+        self.outputs
+            .iter()
+            .fold(Amount::from_sat(0), |acc, out| acc + out.value)
     }
 
     /// Check if transaction has witness data
@@ -211,7 +211,7 @@ impl Transaction {
         let base_size = self.serialize_legacy().len() as u32;
         let total_size = self.serialize().len() as u32;
         let witness_size = total_size - base_size;
-        
+
         base_size * 4 + witness_size
     }
 
@@ -228,43 +228,43 @@ impl Transaction {
     /// Serialize transaction without witness data (legacy format)
     pub fn serialize_legacy(&self) -> Vec<u8> {
         let mut data = Vec::new();
-        
+
         // Version
         data.extend_from_slice(&self.version.to_le_bytes());
-        
+
         // Input count
         data.extend_from_slice(&compact_size(self.inputs.len() as u64));
-        
+
         // Inputs (without witness)
         for input in &self.inputs {
             // Previous output
             data.extend_from_slice(input.previous_output.txid.as_bytes());
             data.extend_from_slice(&input.previous_output.vout.to_le_bytes());
-            
+
             // Script sig
             let script_bytes = input.script_sig.as_bytes();
             data.extend_from_slice(&compact_size(script_bytes.len() as u64));
             data.extend_from_slice(script_bytes);
-            
+
             // Sequence
             data.extend_from_slice(&input.sequence.to_le_bytes());
         }
-        
+
         // Output count
         data.extend_from_slice(&compact_size(self.outputs.len() as u64));
-        
+
         // Outputs
         for output in &self.outputs {
             data.extend_from_slice(&output.value.as_sat().to_le_bytes());
-            
+
             let script_bytes = output.script_pubkey.as_bytes();
             data.extend_from_slice(&compact_size(script_bytes.len() as u64));
             data.extend_from_slice(script_bytes);
         }
-        
+
         // Locktime
         data.extend_from_slice(&self.lock_time.to_le_bytes());
-        
+
         data
     }
 
@@ -273,60 +273,60 @@ impl Transaction {
         if !self.has_witness() {
             return self.serialize_legacy();
         }
-        
+
         let mut data = Vec::new();
-        
+
         // Version
         data.extend_from_slice(&self.version.to_le_bytes());
-        
+
         // Marker and flag
         data.push(0x00);
         data.push(0x01);
-        
+
         // Input count
         data.extend_from_slice(&compact_size(self.inputs.len() as u64));
-        
+
         // Inputs
         for input in &self.inputs {
             // Previous output
             data.extend_from_slice(input.previous_output.txid.as_bytes());
             data.extend_from_slice(&input.previous_output.vout.to_le_bytes());
-            
+
             // Script sig
             let script_bytes = input.script_sig.as_bytes();
             data.extend_from_slice(&compact_size(script_bytes.len() as u64));
             data.extend_from_slice(script_bytes);
-            
+
             // Sequence
             data.extend_from_slice(&input.sequence.to_le_bytes());
         }
-        
+
         // Output count
         data.extend_from_slice(&compact_size(self.outputs.len() as u64));
-        
+
         // Outputs
         for output in &self.outputs {
             data.extend_from_slice(&output.value.as_sat().to_le_bytes());
-            
+
             let script_bytes = output.script_pubkey.as_bytes();
             data.extend_from_slice(&compact_size(script_bytes.len() as u64));
             data.extend_from_slice(script_bytes);
         }
-        
+
         // Witness data
         for input in &self.inputs {
             let witness_count = input.witness.len();
             data.extend_from_slice(&compact_size(witness_count as u64));
-            
+
             for item in input.witness.stack() {
                 data.extend_from_slice(&compact_size(item.len() as u64));
                 data.extend_from_slice(item);
             }
         }
-        
+
         // Locktime
         data.extend_from_slice(&self.lock_time.to_le_bytes());
-        
+
         data
     }
 }
@@ -397,8 +397,7 @@ impl<'a> Cursor<'a> {
     fn read_i64_le(&mut self) -> Result<i64, DeserializeError> {
         let bytes = self.read_bytes(8)?;
         Ok(i64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
     }
 
@@ -411,8 +410,7 @@ impl<'a> Cursor<'a> {
             0xff => {
                 let val = self.read_bytes(8)?;
                 Ok(u64::from_le_bytes([
-                    val[0], val[1], val[2], val[3],
-                    val[4], val[5], val[6], val[7],
+                    val[0], val[1], val[2], val[3], val[4], val[5], val[6], val[7],
                 ]))
             }
         }
@@ -598,7 +596,7 @@ mod tests {
     fn test_witness_creation() {
         let mut witness = Witness::new();
         assert!(witness.is_empty());
-        
+
         witness.push(vec![1, 2, 3]);
         assert_eq!(witness.len(), 1);
         assert!(!witness.is_empty());

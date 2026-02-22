@@ -7,13 +7,13 @@
 //! The codec is I/O-free: it operates on `&[u8]` / `Vec<u8>` and can be
 //! used with any transport (TCP, in-memory, etc.).
 
+use super::messages::*;
+use super::types::*;
 use crate::crypto::hashing::hash256;
 use crate::primitives::block::BlockHeader;
 use crate::primitives::hash::{BlockHash, Hash256};
 use crate::primitives::transaction::Transaction;
 use crate::primitives::Block;
-use super::messages::*;
-use super::types::*;
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -26,15 +26,9 @@ pub enum CodecError {
     /// Not enough bytes to decode
     UnexpectedEnd,
     /// Magic bytes don't match expected network
-    BadMagic {
-        expected: [u8; 4],
-        got: [u8; 4],
-    },
+    BadMagic { expected: [u8; 4], got: [u8; 4] },
     /// Checksum mismatch
-    BadChecksum {
-        expected: [u8; 4],
-        got: [u8; 4],
-    },
+    BadChecksum { expected: [u8; 4], got: [u8; 4] },
     /// Payload exceeds maximum size
     PayloadTooLarge(u32),
     /// Compact size value is non-canonical or too large
@@ -56,7 +50,8 @@ impl fmt::Display for CodecError {
             }
             CodecError::BadChecksum { expected, got } => {
                 write!(
-                    f, "bad checksum: expected {:02x?}, got {:02x?}",
+                    f,
+                    "bad checksum: expected {:02x?}, got {:02x?}",
                     expected, got
                 )
             }
@@ -209,7 +204,8 @@ pub fn decode_compact_size(data: &[u8], pos: usize) -> Result<(u64, usize), Code
             if pos + 5 > data.len() {
                 return Err(CodecError::UnexpectedEnd);
             }
-            let v = u32::from_le_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]);
+            let v =
+                u32::from_le_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]);
             if v < 0x10000 {
                 return Err(CodecError::BadCompactSize);
             }
@@ -220,8 +216,14 @@ pub fn decode_compact_size(data: &[u8], pos: usize) -> Result<(u64, usize), Code
                 return Err(CodecError::UnexpectedEnd);
             }
             let v = u64::from_le_bytes([
-                data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4],
-                data[pos + 5], data[pos + 6], data[pos + 7], data[pos + 8],
+                data[pos + 1],
+                data[pos + 2],
+                data[pos + 3],
+                data[pos + 4],
+                data[pos + 5],
+                data[pos + 6],
+                data[pos + 7],
+                data[pos + 8],
             ]);
             if v < 0x100000000 {
                 return Err(CodecError::BadCompactSize);
@@ -377,7 +379,14 @@ impl<'a> Cursor<'a> {
         let time = self.read_u32_le()?;
         let bits = self.read_u32_le()?;
         let nonce = self.read_u32_le()?;
-        Ok(BlockHeader::new(version, prev_hash, merkle_root, time, bits, nonce))
+        Ok(BlockHeader::new(
+            version,
+            prev_hash,
+            merkle_root,
+            time,
+            bits,
+            nonce,
+        ))
     }
 
     fn read_transaction(&mut self) -> Result<Transaction, CodecError> {
@@ -493,7 +502,9 @@ pub fn encode_payload(msg: &NetworkMessage) -> Vec<u8> {
             push_u64_le(&mut buf, sc.version);
         }
 
-        NetworkMessage::Inv(items) | NetworkMessage::GetData(items) | NetworkMessage::NotFound(items) => {
+        NetworkMessage::Inv(items)
+        | NetworkMessage::GetData(items)
+        | NetworkMessage::NotFound(items) => {
             push_compact_size(&mut buf, items.len() as u64);
             for iv in items {
                 push_inv_vector(&mut buf, iv);
@@ -658,7 +669,10 @@ pub fn decode_payload(command: &str, payload: &[u8]) -> Result<NetworkMessage, C
         "sendcmpct" => {
             let announce = c.read_u8()? != 0;
             let version = c.read_u64_le()?;
-            Ok(NetworkMessage::SendCmpct(SendCmpctMessage { announce, version }))
+            Ok(NetworkMessage::SendCmpct(SendCmpctMessage {
+                announce,
+                version,
+            }))
         }
 
         "feefilter" => {
@@ -884,9 +898,7 @@ pub fn decode_payload(command: &str, payload: &[u8]) -> Result<NetworkMessage, C
             }))
         }
 
-        "alert" => {
-            Ok(NetworkMessage::Alert(payload.to_vec()))
-        }
+        "alert" => Ok(NetworkMessage::Alert(payload.to_vec())),
 
         _ => Ok(NetworkMessage::Unknown {
             command: command.to_string(),
@@ -999,14 +1011,20 @@ mod tests {
     fn test_compact_size_non_canonical_u16() {
         // 0xfd prefix but value < 0xfd → non-canonical
         let data = [0xfd, 0x01, 0x00];
-        assert_eq!(decode_compact_size(&data, 0), Err(CodecError::BadCompactSize));
+        assert_eq!(
+            decode_compact_size(&data, 0),
+            Err(CodecError::BadCompactSize)
+        );
     }
 
     #[test]
     fn test_compact_size_non_canonical_u32() {
         // 0xfe prefix but value fits in u16
         let data = [0xfe, 0x01, 0x00, 0x00, 0x00];
-        assert_eq!(decode_compact_size(&data, 0), Err(CodecError::BadCompactSize));
+        assert_eq!(
+            decode_compact_size(&data, 0),
+            Err(CodecError::BadCompactSize)
+        );
     }
 
     // ── checksum ────────────────────────────────────────────────────
@@ -1063,7 +1081,9 @@ mod tests {
 
     #[test]
     fn test_ping_roundtrip() {
-        let msg = NetworkMessage::Ping { nonce: 0xDEADBEEF12345678 };
+        let msg = NetworkMessage::Ping {
+            nonce: 0xDEADBEEF12345678,
+        };
         let wire = encode_message(MAINNET_MAGIC, &msg);
         let (decoded, _) = decode_message(MAINNET_MAGIC, &wire).unwrap();
         match decoded {
@@ -1388,7 +1408,10 @@ mod tests {
         };
         let bytes = hdr.to_bytes();
         let result = decode_message(MAINNET_MAGIC, &bytes);
-        assert!(matches!(result, Err(CodecError::PayloadTooLarge(5_000_000))));
+        assert!(matches!(
+            result,
+            Err(CodecError::PayloadTooLarge(5_000_000))
+        ));
     }
 
     // ── getblocktxn roundtrip ───────────────────────────────────────

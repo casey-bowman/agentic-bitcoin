@@ -13,11 +13,11 @@
 //! All mutable state lives behind a single `RwLock<MempoolInner>` to
 //! eliminate the deadlock risk identified in the code review (finding #17).
 
-use async_trait::async_trait;
 use abtc_domain::policy::limits::{MempoolLimits, PackageInfo};
 use abtc_domain::policy::rbf::{RbfPolicy, SignalsRbf};
 use abtc_domain::primitives::{Amount, Transaction, Txid};
 use abtc_ports::{MempoolEntry, MempoolInfo, MempoolPort};
+use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -175,10 +175,7 @@ impl MempoolInner {
             })
             .collect();
 
-        by_desc_rate.sort_by(|a, b| {
-            a.1.partial_cmp(&b.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        by_desc_rate.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
         for (txid, _rate, size) in by_desc_rate {
             if self.total_bytes <= max_bytes {
@@ -186,7 +183,10 @@ impl MempoolInner {
             }
             self.entries.remove(&txid);
             self.total_bytes = self.total_bytes.saturating_sub(size as u64);
-            tracing::debug!("Evicted transaction {} from mempool (low descendant fee rate)", txid);
+            tracing::debug!(
+                "Evicted transaction {} from mempool (low descendant fee rate)",
+                txid
+            );
         }
     }
 
@@ -223,19 +223,14 @@ impl MempoolInner {
         let originals: Vec<(Txid, Amount, usize, bool)> = conflicting_txids
             .iter()
             .filter_map(|txid| {
-                self.entries.get(txid).map(|entry| {
-                    (*txid, entry.fee, entry.size, entry.tx.signals_rbf())
-                })
+                self.entries
+                    .get(txid)
+                    .map(|entry| (*txid, entry.fee, entry.size, entry.tx.signals_rbf()))
             })
             .collect();
 
-        RbfPolicy::check_replacement(
-            new_fee,
-            new_size,
-            &originals,
-            to_evict.len(),
-        )
-        .map_err(|e| format!("RBF rejected: {}", e))?;
+        RbfPolicy::check_replacement(new_fee, new_size, &originals, to_evict.len())
+            .map_err(|e| format!("RBF rejected: {}", e))?;
 
         Ok(to_evict.into_iter().collect())
     }
@@ -299,10 +294,7 @@ impl InMemoryMempool {
             })
             .collect();
 
-        by_ancestor_rate.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        by_ancestor_rate.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut total_weight: u32 = 0;
         let mut selected = Vec::new();
@@ -494,11 +486,7 @@ impl MempoolPort for InMemoryMempool {
         // Update graph
         inner.parents.insert(txid, in_mempool_parents.clone());
         for parent_txid in &in_mempool_parents {
-            inner
-                .children
-                .entry(*parent_txid)
-                .or_default()
-                .insert(txid);
+            inner.children.entry(*parent_txid).or_default().insert(txid);
         }
         inner.children.entry(txid).or_default();
 
@@ -751,7 +739,10 @@ mod tests {
 
         assert_eq!(mempool.get_transaction_count().await.unwrap(), 2);
 
-        mempool.remove_transaction(&parent_txid, true).await.unwrap();
+        mempool
+            .remove_transaction(&parent_txid, true)
+            .await
+            .unwrap();
         assert_eq!(mempool.get_transaction_count().await.unwrap(), 0);
     }
 
@@ -891,7 +882,10 @@ mod tests {
 
         {
             let inner = mempool.inner.read().await;
-            assert_eq!(inner.packages.get(&parent_txid).unwrap().descendant_count, 2);
+            assert_eq!(
+                inner.packages.get(&parent_txid).unwrap().descendant_count,
+                2
+            );
         }
 
         mempool
@@ -901,7 +895,10 @@ mod tests {
 
         {
             let inner = mempool.inner.read().await;
-            assert_eq!(inner.packages.get(&parent_txid).unwrap().descendant_count, 1);
+            assert_eq!(
+                inner.packages.get(&parent_txid).unwrap().descendant_count,
+                1
+            );
         }
     }
 

@@ -11,10 +11,10 @@
 
 use std::fmt;
 
+use super::fragment::Miniscript;
 use crate::script::opcodes::Opcodes;
 use crate::script::script::Script;
 use crate::wallet::keys::PublicKey;
-use super::fragment::Miniscript;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -247,7 +247,7 @@ fn decode_expression(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
         // OP_1 → True, or multi(1, ...) if followed by a key push
         0x51 => {
             cursor.read_byte()?; // consume OP_1
-            // Check if this is the start of multi(1, ...): OP_1 <key1> ...
+                                 // Check if this is the start of multi(1, ...): OP_1 <key1> ...
             if !cursor.is_empty() {
                 let peek = cursor.peek()?;
                 if peek == 0x21 {
@@ -340,7 +340,8 @@ fn decode_expression(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
                 cursor.expect(Opcodes::OP_EQUALVERIFY as u8)?;
                 let hash_op = cursor.read_byte()?;
                 match hash_op {
-                    0xa8 => { // OP_SHA256
+                    0xa8 => {
+                        // OP_SHA256
                         let hash_data = read_push(cursor)?;
                         if hash_data.len() != 32 {
                             return Err(DecodeError::InvalidInteger);
@@ -350,7 +351,8 @@ fn decode_expression(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
                         hash.copy_from_slice(&hash_data);
                         Ok(Miniscript::sha256(hash))
                     }
-                    0xaa => { // OP_HASH256
+                    0xaa => {
+                        // OP_HASH256
                         let hash_data = read_push(cursor)?;
                         if hash_data.len() != 32 {
                             return Err(DecodeError::InvalidInteger);
@@ -360,7 +362,8 @@ fn decode_expression(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
                         hash.copy_from_slice(&hash_data);
                         Ok(Miniscript::hash256(hash))
                     }
-                    0xa6 => { // OP_RIPEMD160
+                    0xa6 => {
+                        // OP_RIPEMD160
                         let hash_data = read_push(cursor)?;
                         if hash_data.len() != 20 {
                             return Err(DecodeError::InvalidInteger);
@@ -370,7 +373,8 @@ fn decode_expression(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
                         hash.copy_from_slice(&hash_data);
                         Ok(Miniscript::ripemd160(hash))
                     }
-                    0xa9 => { // OP_HASH160
+                    0xa9 => {
+                        // OP_HASH160
                         let hash_data = read_push(cursor)?;
                         if hash_data.len() != 20 {
                             return Err(DecodeError::InvalidInteger);
@@ -389,9 +393,7 @@ fn decode_expression(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
         //   - <key> followed by OP_CHECKSIG → pk_k then potentially c: or multi_a
         //   - <n> followed by OP_CSV/CLTV → older/after
         //   - <k> followed by keys → multi(k, ...)
-        _ => {
-            decode_push_start(cursor)
-        }
+        _ => decode_push_start(cursor),
     }
 }
 
@@ -547,8 +549,8 @@ fn try_decode_multi(cursor: &mut Cursor, k: usize) -> Result<Miniscript, DecodeE
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::fragment::Terminal;
+    use super::*;
     use crate::wallet::keys::PublicKey;
 
     fn dummy_key(seed: u8) -> PublicKey {
@@ -662,10 +664,7 @@ mod tests {
     fn test_roundtrip_or_i() {
         let k1 = dummy_key(10);
         let k2 = dummy_key(11);
-        let ms = Miniscript::or_i(
-            Miniscript::pk(k1),
-            Miniscript::pk(k2),
-        );
+        let ms = Miniscript::or_i(Miniscript::pk(k1), Miniscript::pk(k2));
         let script = ms.encode();
         let parsed = Miniscript::parse(&script).unwrap();
         match &parsed.node {

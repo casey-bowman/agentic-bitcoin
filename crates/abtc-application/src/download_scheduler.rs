@@ -128,7 +128,8 @@ impl DownloadScheduler {
 
     /// Register a peer so we can track its stats.
     pub fn register_peer(&mut self, peer_id: u64, addr: SocketAddr) {
-        self.peer_stats.insert(peer_id, PeerDownloadStats::new(addr));
+        self.peer_stats
+            .insert(peer_id, PeerDownloadStats::new(addr));
     }
 
     /// Remove a peer and cancel all its in-flight requests.
@@ -175,8 +176,7 @@ impl DownloadScheduler {
                 if stats.blocks_delivered == 1 {
                     stats.avg_delivery_ms = delivery_ms as f64;
                 } else {
-                    stats.avg_delivery_ms =
-                        stats.avg_delivery_ms * 0.9 + delivery_ms as f64 * 0.1;
+                    stats.avg_delivery_ms = stats.avg_delivery_ms * 0.9 + delivery_ms as f64 * 0.1;
                 }
             }
             self.last_block_time = now;
@@ -229,9 +229,7 @@ impl DownloadScheduler {
     pub fn pick_peer(&self, available_peers: &[u64]) -> Option<u64> {
         available_peers
             .iter()
-            .filter_map(|&pid| {
-                self.peer_stats.get(&pid).map(|s| (pid, s))
-            })
+            .filter_map(|&pid| self.peer_stats.get(&pid).map(|s| (pid, s)))
             .filter(|(_, stats)| stats.in_flight < MAX_BLOCKS_PER_PEER)
             .max_by(|(_, a), (_, b)| {
                 // Score: success_rate * 100 + speed/1024
@@ -369,7 +367,9 @@ mod tests {
 
         // Trigger stale
         let actions = sched.check_timeouts(1601);
-        assert!(actions.iter().any(|a| *a == SchedulerAction::StaleTipDetected));
+        assert!(actions
+            .iter()
+            .any(|a| *a == SchedulerAction::StaleTipDetected));
 
         // Deliver a block → resets stale warning
         let hash = [0xEF; 32];
@@ -378,7 +378,9 @@ mod tests {
 
         // Should be able to trigger stale again later
         let actions = sched.check_timeouts(2210);
-        assert!(actions.iter().any(|a| *a == SchedulerAction::StaleTipDetected));
+        assert!(actions
+            .iter()
+            .any(|a| *a == SchedulerAction::StaleTipDetected));
     }
 
     #[test]

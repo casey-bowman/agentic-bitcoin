@@ -22,24 +22,22 @@
 //! Compact blocks (BIP152): cmpctblock, getblocktxn, blocktxn
 //! Keepalive: ping, pong
 
-pub mod types;
-pub mod messages;
 pub mod codec;
+pub mod messages;
+pub mod types;
 
 // Re-export key types
-pub use types::{
-    ServiceFlags, InvType, InvVector, NetAddress,
-    PROTOCOL_VERSION, MIN_PEER_PROTO_VERSION, MAX_PROTOCOL_MESSAGE_LENGTH,
-    MAX_HEADERS, MAX_INV_SIZE, USER_AGENT,
+pub use codec::{
+    compute_checksum, decode_compact_size, decode_message, decode_payload, encode_compact_size,
+    encode_message, encode_payload, push_compact_size, verify_checksum, CodecError, MessageHeader,
+    HEADER_SIZE,
 };
 pub use messages::{
-    NetworkMessage, VersionMessage, TimestampedAddress, AddrV2Entry,
-    GetHeadersMessage, GetBlocksMessage, SendCmpctMessage,
-    CmpctBlockMessage, PrefilledTx, GetBlockTxnMessage, BlockTxnMessage,
+    AddrV2Entry, BlockTxnMessage, CmpctBlockMessage, GetBlockTxnMessage, GetBlocksMessage,
+    GetHeadersMessage, NetworkMessage, PrefilledTx, SendCmpctMessage, TimestampedAddress,
+    VersionMessage,
 };
-pub use codec::{
-    CodecError, MessageHeader, HEADER_SIZE,
-    encode_message, decode_message, encode_payload, decode_payload,
-    compute_checksum, verify_checksum,
-    encode_compact_size, decode_compact_size, push_compact_size,
+pub use types::{
+    InvType, InvVector, NetAddress, ServiceFlags, MAX_HEADERS, MAX_INV_SIZE,
+    MAX_PROTOCOL_MESSAGE_LENGTH, MIN_PEER_PROTO_VERSION, PROTOCOL_VERSION, USER_AGENT,
 };

@@ -5,11 +5,11 @@
 //! - Computes the correct block subsidy following the halving schedule
 //! - Builds a complete block template ready for mining
 
-use async_trait::async_trait;
-use abtc_domain::primitives::{Block, BlockHeader, BlockHash, Hash256, Transaction, TxOut, Amount};
-use abtc_domain::script::Script;
-use abtc_ports::{BlockTemplateProvider, BlockTemplate, MempoolPort};
 use abtc_domain::consensus::ConsensusParams;
+use abtc_domain::primitives::{Amount, Block, BlockHash, BlockHeader, Hash256, Transaction, TxOut};
+use abtc_domain::script::Script;
+use abtc_ports::{BlockTemplate, BlockTemplateProvider, MempoolPort};
+use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -168,7 +168,14 @@ impl BlockTemplateProvider for SimpleMiner {
         let difficulty_bits = params.pow_limit_bits;
 
         let temp_block = Block::new(
-            BlockHeader::new(0x20000000, prev_hash, Hash256::zero(), now, difficulty_bits, 0),
+            BlockHeader::new(
+                0x20000000,
+                prev_hash,
+                Hash256::zero(),
+                now,
+                difficulty_bits,
+                0,
+            ),
             transactions.clone(),
         );
         let merkle_root = temp_block.compute_merkle_root();
@@ -221,7 +228,9 @@ mod tests {
     async fn test_create_block_template() {
         let miner = SimpleMiner::new();
         miner.set_height(1).await;
-        miner.set_best_block_hash(BlockHash::genesis_mainnet()).await;
+        miner
+            .set_best_block_hash(BlockHash::genesis_mainnet())
+            .await;
 
         let params = ConsensusParams::mainnet();
         let template = miner
@@ -239,24 +248,36 @@ mod tests {
     #[test]
     fn test_block_subsidy_initial() {
         let params = ConsensusParams::mainnet();
-        assert_eq!(SimpleMiner::get_block_subsidy(0, &params).as_sat(), 5_000_000_000);
+        assert_eq!(
+            SimpleMiner::get_block_subsidy(0, &params).as_sat(),
+            5_000_000_000
+        );
     }
 
     #[test]
     fn test_block_subsidy_first_halving() {
         let params = ConsensusParams::mainnet();
-        assert_eq!(SimpleMiner::get_block_subsidy(210_000, &params).as_sat(), 2_500_000_000);
+        assert_eq!(
+            SimpleMiner::get_block_subsidy(210_000, &params).as_sat(),
+            2_500_000_000
+        );
     }
 
     #[test]
     fn test_block_subsidy_second_halving() {
         let params = ConsensusParams::mainnet();
-        assert_eq!(SimpleMiner::get_block_subsidy(420_000, &params).as_sat(), 1_250_000_000);
+        assert_eq!(
+            SimpleMiner::get_block_subsidy(420_000, &params).as_sat(),
+            1_250_000_000
+        );
     }
 
     #[test]
     fn test_block_subsidy_exhausted() {
         let params = ConsensusParams::mainnet();
-        assert_eq!(SimpleMiner::get_block_subsidy(210_000 * 64, &params).as_sat(), 0);
+        assert_eq!(
+            SimpleMiner::get_block_subsidy(210_000 * 64, &params).as_sat(),
+            0
+        );
     }
 }

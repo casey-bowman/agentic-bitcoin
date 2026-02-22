@@ -67,7 +67,9 @@ impl Eq for Num3072 {}
 impl Num3072 {
     /// Zero.
     const fn zero() -> Self {
-        Num3072 { limbs: [0u64; LIMBS] }
+        Num3072 {
+            limbs: [0u64; LIMBS],
+        }
     }
 
     /// One (the multiplicative identity).
@@ -317,8 +319,7 @@ fn hash_to_num3072(data: &[u8]) -> Num3072 {
         input.extend_from_slice(seed_bytes);
         input.extend_from_slice(&i.to_le_bytes());
         let chunk_hash = sha256(&input);
-        expanded[i as usize * 32..(i as usize + 1) * 32]
-            .copy_from_slice(chunk_hash.as_bytes());
+        expanded[i as usize * 32..(i as usize + 1) * 32].copy_from_slice(chunk_hash.as_bytes());
     }
 
     let mut num = Num3072::from_le_bytes(&expanded);
@@ -585,7 +586,11 @@ mod tests {
         for i in 0..20 {
             let data = format!("test_element_{}", i);
             let num = hash_to_num3072(data.as_bytes());
-            assert!(!num.is_zero(), "hash_to_num3072 produced zero for: {}", data);
+            assert!(
+                !num.is_zero(),
+                "hash_to_num3072 produced zero for: {}",
+                data
+            );
         }
     }
 

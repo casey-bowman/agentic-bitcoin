@@ -227,23 +227,23 @@ impl PeerScoring {
             let addr = peer.addr;
             let reason = format!(
                 "ban score {} >= {} (last: {})",
-                peer.score, self.ban_threshold, violation.reason()
+                peer.score,
+                self.ban_threshold,
+                violation.reason()
             );
 
             // Add to ban list.
-            self.ban_list.insert(addr, BanEntry {
+            self.ban_list.insert(
                 addr,
-                ban_time: now,
-                ban_duration: self.ban_duration,
-                reason: reason.clone(),
-            });
-
-            tracing::warn!(
-                "Banning peer {} ({}): {}",
-                peer_id,
-                addr,
-                reason
+                BanEntry {
+                    addr,
+                    ban_time: now,
+                    ban_duration: self.ban_duration,
+                    reason: reason.clone(),
+                },
             );
+
+            tracing::warn!("Banning peer {} ({}): {}", peer_id, addr, reason);
 
             ScoreAction::Ban {
                 peer_id,
@@ -265,12 +265,15 @@ impl PeerScoring {
 
     /// Manually ban an address.
     pub fn ban_address(&mut self, addr: SocketAddr, reason: String, now: u64) {
-        self.ban_list.insert(addr, BanEntry {
+        self.ban_list.insert(
             addr,
-            ban_time: now,
-            ban_duration: self.ban_duration,
-            reason,
-        });
+            BanEntry {
+                addr,
+                ban_time: now,
+                ban_duration: self.ban_duration,
+                reason,
+            },
+        );
     }
 
     /// Manually unban an address.
@@ -347,7 +350,9 @@ mod tests {
         // InvalidBlock = 100, which meets the threshold immediately.
         let action = scoring.record_misbehavior(1, Misbehavior::InvalidBlock, 1000);
         match action {
-            ScoreAction::Ban { peer_id, addr: a, .. } => {
+            ScoreAction::Ban {
+                peer_id, addr: a, ..
+            } => {
                 assert_eq!(peer_id, 1);
                 assert_eq!(a, addr(8333));
             }

@@ -12,21 +12,23 @@
 //! - `tx_builder` — Transaction construction and signing
 //! - `psbt` — Partially Signed Bitcoin Transactions (BIP174)
 
-pub mod keys;
 pub mod address;
 pub mod coin_selection;
 pub mod descriptors;
 pub mod hd;
+pub mod keys;
 pub mod psbt;
 pub mod tx_builder;
 
-pub use keys::{PrivateKey, PublicKey, KeyError};
-pub use address::{Address, AddressType, AddressError};
-pub use coin_selection::{CoinSelector, SelectionStrategy, CoinSelectionResult};
+pub use address::{Address, AddressError, AddressType};
+pub use coin_selection::{CoinSelectionResult, CoinSelector, SelectionStrategy};
 pub use descriptors::{
-    Descriptor, DescriptorKey, parse_descriptor, add_checksum,
-    ParseError as DescriptorParseError, DescriptorError,
+    add_checksum, parse_descriptor, Descriptor, DescriptorError, DescriptorKey,
+    ParseError as DescriptorParseError,
 };
-pub use hd::{ExtendedPrivateKey, ExtendedPublicKey, HdError, parse_derivation_path, HARDENED_OFFSET};
-pub use psbt::{Psbt, PsbtInput, PsbtOutput, PsbtError, Bip32Derivation};
-pub use tx_builder::{TransactionBuilder, BuilderError, TapScriptPath};
+pub use hd::{
+    parse_derivation_path, ExtendedPrivateKey, ExtendedPublicKey, HdError, HARDENED_OFFSET,
+};
+pub use keys::{KeyError, PrivateKey, PublicKey};
+pub use psbt::{Bip32Derivation, Psbt, PsbtError, PsbtInput, PsbtOutput};
+pub use tx_builder::{BuilderError, TapScriptPath, TransactionBuilder};

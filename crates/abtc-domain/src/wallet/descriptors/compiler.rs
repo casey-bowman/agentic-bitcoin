@@ -12,7 +12,7 @@ use crate::script::opcodes::Opcodes;
 use crate::script::script::{Script, ScriptBuilder};
 use crate::wallet::address::Address;
 
-use super::descriptor::{Descriptor, ShInner, WshInner, TrTree};
+use super::descriptor::{Descriptor, ShInner, TrTree, WshInner};
 use super::key_expr::{DescriptorKey, KeyError};
 
 // ---------------------------------------------------------------------------
@@ -193,8 +193,7 @@ impl Descriptor {
             }
             Descriptor::Wpkh(key) => {
                 let pk = key.derive_public_key(index)?;
-                Address::p2wpkh(&pk, mainnet)
-                    .map_err(|e| DescriptorError::Address(e.to_string()))
+                Address::p2wpkh(&pk, mainnet).map_err(|e| DescriptorError::Address(e.to_string()))
             }
             Descriptor::ShWpkh(key) => {
                 let pk = key.derive_public_key(index)?;
@@ -375,7 +374,8 @@ fn tweak_pubkey(
     let mut pk = secp256k1::PublicKey::from_slice(&full_key)
         .map_err(|e| DescriptorError::Address(format!("invalid pubkey: {}", e)))?;
 
-    pk = pk.combine(&secp256k1::PublicKey::from_secret_key(&secp, &tweak))
+    pk = pk
+        .combine(&secp256k1::PublicKey::from_secret_key(&secp, &tweak))
         .map_err(|e| DescriptorError::Address(format!("tweak failed: {}", e)))?;
 
     // Extract x-only from the tweaked key
@@ -399,7 +399,7 @@ fn compute_tr_tree_hash(tree: &TrTree, index: u32) -> Result<[u8; 32], Descripto
             preimage.extend_from_slice(&tag_hash);
             preimage.extend_from_slice(&tag_hash);
             preimage.push(0xc0); // leaf version
-            // compact_size encoding of script length
+                                 // compact_size encoding of script length
             encode_compact_size(&mut preimage, script_bytes.len());
             preimage.extend_from_slice(script_bytes);
 
@@ -456,12 +456,12 @@ fn encode_compact_size(buf: &mut Vec<u8>, n: usize) {
 
 #[cfg(test)]
 mod tests {
-    use crate::wallet::keys::PublicKey;
+    use crate::wallet::descriptors::descriptor::{Descriptor, WshInner};
     use crate::wallet::descriptors::key_expr::{
-        SingleKey, DescriptorKey, ExtendedKey, XKey, Wildcard,
+        DescriptorKey, ExtendedKey, SingleKey, Wildcard, XKey,
     };
     use crate::wallet::hd::ExtendedPrivateKey;
-    use crate::wallet::descriptors::descriptor::{Descriptor, WshInner};
+    use crate::wallet::keys::PublicKey;
 
     fn dummy_key(seed: u8) -> PublicKey {
         use crate::crypto::hashing::sha256;
@@ -490,7 +490,7 @@ mod tests {
         // P2PKH: OP_DUP OP_HASH160 <20> <hash> OP_EQUALVERIFY OP_CHECKSIG
         assert_eq!(bytes[0], 0x76); // OP_DUP
         assert_eq!(bytes[1], 0xa9); // OP_HASH160
-        assert_eq!(bytes[2], 20);   // push 20
+        assert_eq!(bytes[2], 20); // push 20
         assert_eq!(bytes[23], 0x88); // OP_EQUALVERIFY
         assert_eq!(bytes[24], 0xac); // OP_CHECKSIG
         assert_eq!(bytes.len(), 25);
@@ -503,7 +503,7 @@ mod tests {
         let bytes = script.as_bytes();
         // P2WPKH: OP_0 <20> <hash>
         assert_eq!(bytes[0], 0x00); // OP_0
-        assert_eq!(bytes[1], 20);   // push 20
+        assert_eq!(bytes[1], 20); // push 20
         assert_eq!(bytes.len(), 22);
     }
 
@@ -535,10 +535,7 @@ mod tests {
 
     #[test]
     fn test_sh_wsh_multi_script_pubkey() {
-        let desc = Descriptor::ShWsh(WshInner::Multi(
-            1,
-            vec![single_dk(20), single_dk(21)],
-        ));
+        let desc = Descriptor::ShWsh(WshInner::Multi(1, vec![single_dk(20), single_dk(21)]));
         let script = desc.script_pubkey(0).unwrap();
         let bytes = script.as_bytes();
         // P2SH: OP_HASH160 <20> <hash> OP_EQUAL
@@ -599,10 +596,7 @@ mod tests {
 
     #[test]
     fn test_witness_script_wsh() {
-        let desc = Descriptor::Wsh(WshInner::Multi(
-            1,
-            vec![single_dk(40), single_dk(41)],
-        ));
+        let desc = Descriptor::Wsh(WshInner::Multi(1, vec![single_dk(40), single_dk(41)]));
         let ws = desc.witness_script(0).unwrap();
         assert!(ws.is_some());
         let ws_bytes = ws.unwrap();

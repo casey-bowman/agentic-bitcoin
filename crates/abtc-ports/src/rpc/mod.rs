@@ -3,8 +3,8 @@
 //! This module defines the port traits for JSON-RPC 2.0 server functionality.
 //! Implementations provide HTTP/WebSocket endpoints for external clients.
 
-use std::error::Error;
 use serde_json::Value;
+use std::error::Error;
 
 /// An RPC request following JSON-RPC 2.0 specification.
 #[derive(Clone, Debug)]
@@ -128,11 +128,8 @@ pub trait RpcHandler: Send + Sync {
     ///
     /// Returns `Some(response)` if this handler handles the method,
     /// `None` if another handler should try.
-    async fn handle_request(
-        &self,
-        method: &str,
-        params: &Value,
-    ) -> Result<Option<Value>, RpcError>;
+    async fn handle_request(&self, method: &str, params: &Value)
+        -> Result<Option<Value>, RpcError>;
 }
 
 /// Port trait for the RPC server.
@@ -256,16 +253,13 @@ pub mod rpc_helpers {
 
     /// Converts a JSON value to an i64, or returns an error.
     pub fn to_i64(value: &Value) -> Result<i64, String> {
-        value
-            .as_i64()
-            .ok_or_else(|| "Expected integer".to_string())
+        value.as_i64().ok_or_else(|| "Expected integer".to_string())
     }
 
     /// Converts a JSON value to a u32, or returns an error.
     pub fn to_u32(value: &Value) -> Result<u32, String> {
-        to_i64(value).and_then(|v| {
-            u32::try_from(v).map_err(|_| "Value out of range for u32".to_string())
-        })
+        to_i64(value)
+            .and_then(|v| u32::try_from(v).map_err(|_| "Value out of range for u32".to_string()))
     }
 
     /// Converts a JSON value to a bool, or returns an error.

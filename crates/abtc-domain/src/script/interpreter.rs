@@ -280,12 +280,7 @@ pub trait SignatureChecker: Send + Sync {
     /// * `script_code` - the script being executed (for sighash computation)
     ///
     /// Returns `true` if the signature is valid.
-    fn check_sig(
-        &self,
-        sig: &[u8],
-        pubkey: &[u8],
-        script_code: &Script,
-    ) -> bool;
+    fn check_sig(&self, sig: &[u8], pubkey: &[u8], script_code: &Script) -> bool;
 
     /// Verify a locktime constraint (OP_CHECKLOCKTIMEVERIFY / BIP65)
     fn check_lock_time(&self, lock_time: i64) -> bool;
@@ -312,7 +307,13 @@ pub trait SignatureChecker: Send + Sync {
     /// which includes the tapleaf hash, key version, and code separator position.
     ///
     /// Default implementation returns false.
-    fn check_tapscript_sig(&self, _sig: &[u8], _pubkey: &[u8], _leaf_hash: &[u8; 32], _hash_type: u8) -> bool {
+    fn check_tapscript_sig(
+        &self,
+        _sig: &[u8],
+        _pubkey: &[u8],
+        _leaf_hash: &[u8; 32],
+        _hash_type: u8,
+    ) -> bool {
         false
     }
 
@@ -396,7 +397,10 @@ pub struct TapscriptChecker<'a> {
 impl<'a> TapscriptChecker<'a> {
     /// Create a new tapscript checker wrapping an existing checker.
     pub fn new(inner: &'a dyn SignatureChecker, tapleaf_hash: [u8; 32]) -> Self {
-        TapscriptChecker { inner, tapleaf_hash }
+        TapscriptChecker {
+            inner,
+            tapleaf_hash,
+        }
     }
 }
 
@@ -413,7 +417,8 @@ impl<'a> SignatureChecker for TapscriptChecker<'a> {
             65 => (&sig[..64], sig[64]),
             _ => return false,
         };
-        self.inner.check_tapscript_sig(sig_bytes, pubkey, &self.tapleaf_hash, hash_type)
+        self.inner
+            .check_tapscript_sig(sig_bytes, pubkey, &self.tapleaf_hash, hash_type)
     }
 
     fn check_lock_time(&self, lock_time: i64) -> bool {
@@ -425,11 +430,19 @@ impl<'a> SignatureChecker for TapscriptChecker<'a> {
     }
 
     fn check_schnorr_sig(&self, sig: &[u8], pubkey: &[u8], hash_type: u8) -> bool {
-        self.inner.check_tapscript_sig(sig, pubkey, &self.tapleaf_hash, hash_type)
+        self.inner
+            .check_tapscript_sig(sig, pubkey, &self.tapleaf_hash, hash_type)
     }
 
-    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32], hash_type: u8) -> bool {
-        self.inner.check_tapscript_sig(sig, pubkey, leaf_hash, hash_type)
+    fn check_tapscript_sig(
+        &self,
+        sig: &[u8],
+        pubkey: &[u8],
+        leaf_hash: &[u8; 32],
+        hash_type: u8,
+    ) -> bool {
+        self.inner
+            .check_tapscript_sig(sig, pubkey, leaf_hash, hash_type)
     }
 }
 
@@ -651,9 +664,13 @@ impl<'a> ScriptInterpreter<'a> {
 
             // Disabled opcodes always fail, even in non-executing branches
             match opcode {
-                Opcodes::OP_2MUL | Opcodes::OP_2DIV | Opcodes::OP_MUL
-                | Opcodes::OP_DIV | Opcodes::OP_MOD
-                | Opcodes::OP_LSHIFT | Opcodes::OP_RSHIFT => {
+                Opcodes::OP_2MUL
+                | Opcodes::OP_2DIV
+                | Opcodes::OP_MUL
+                | Opcodes::OP_DIV
+                | Opcodes::OP_MOD
+                | Opcodes::OP_LSHIFT
+                | Opcodes::OP_RSHIFT => {
                     return Err(ScriptError::DisabledOpcode);
                 }
                 _ => {}
@@ -744,7 +761,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- Stack manipulation ----
-
                 Opcodes::OP_DUP => {
                     let top = self.top(0)?.clone();
                     self.push(top)?;
@@ -871,7 +887,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- Equality ----
-
                 Opcodes::OP_EQUAL => {
                     let a = self.pop()?;
                     let b = self.pop()?;
@@ -886,7 +901,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- Arithmetic ----
-
                 Opcodes::OP_1ADD => {
                     let n = self.pop_num()?;
                     self.push_num(n + 1)?;
@@ -986,7 +1000,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- Crypto ----
-
                 Opcodes::OP_RIPEMD160 => {
                     use ripemd::Ripemd160;
                     use sha2::Digest;
@@ -1099,7 +1112,10 @@ impl<'a> ScriptInterpreter<'a> {
                         }
                         let mut found = false;
                         while key_idx < n_keys {
-                            if self.checker.check_sig(sig, &pubkeys[key_idx], &self.script_code) {
+                            if self
+                                .checker
+                                .check_sig(sig, &pubkeys[key_idx], &self.script_code)
+                            {
                                 key_idx += 1;
                                 found = true;
                                 break;
@@ -1155,7 +1171,10 @@ impl<'a> ScriptInterpreter<'a> {
                         }
                         let mut found = false;
                         while key_idx < n_keys {
-                            if self.checker.check_sig(sig, &pubkeys[key_idx], &self.script_code) {
+                            if self
+                                .checker
+                                .check_sig(sig, &pubkeys[key_idx], &self.script_code)
+                            {
                                 key_idx += 1;
                                 found = true;
                                 break;
@@ -1169,7 +1188,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- BIP342 Tapscript ----
-
                 Opcodes::OP_CHECKSIGADD => {
                     // BIP342: pop pubkey, pop num, pop sig
                     // If sig is empty → push num (failed sig doesn't abort, just doesn't increment)
@@ -1193,7 +1211,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- Locktime ----
-
                 Opcodes::OP_CHECKLOCKTIMEVERIFY => {
                     if !self.flags.has(ScriptFlags::VERIFY_CHECKLOCKTIMEVERIFY) {
                         // Treat as NOP if flag not set (pre-BIP65)
@@ -1231,12 +1248,14 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- BIP119: OP_CHECKTEMPLATEVERIFY ----
-
                 Opcodes::OP_CHECKTEMPLATEVERIFY => {
                     if !self.flags.has(ScriptFlags::VERIFY_CHECKTEMPLATEVERIFY) {
                         // When CTV is not activated, this is OP_NOP4 — treat as NOP
                         // (but respect DISCOURAGE_UPGRADABLE_NOPS)
-                        if self.flags.has(ScriptFlags::VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
+                        if self
+                            .flags
+                            .has(ScriptFlags::VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
+                        {
                             return Err(ScriptError::BadOpcode);
                         }
                     } else {
@@ -1254,7 +1273,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- BIP345: OP_VAULT ----
-
                 Opcodes::OP_VAULT => {
                     if !self.flags.has(ScriptFlags::VERIFY_VAULT) {
                         return Err(ScriptError::BadOpcode);
@@ -1289,7 +1307,6 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // ---- BIP345: OP_VAULT_RECOVER ----
-
                 Opcodes::OP_VAULT_RECOVER => {
                     if !self.flags.has(ScriptFlags::VERIFY_VAULT) {
                         return Err(ScriptError::BadOpcode);
@@ -1313,24 +1330,40 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // Upgradable NOPs
-                Opcodes::OP_NOP1 | Opcodes::OP_NOP5
-                | Opcodes::OP_NOP6 | Opcodes::OP_NOP7 | Opcodes::OP_NOP8
-                | Opcodes::OP_NOP9 | Opcodes::OP_NOP10 => {
-                    if self.flags.has(ScriptFlags::VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
+                Opcodes::OP_NOP1
+                | Opcodes::OP_NOP5
+                | Opcodes::OP_NOP6
+                | Opcodes::OP_NOP7
+                | Opcodes::OP_NOP8
+                | Opcodes::OP_NOP9
+                | Opcodes::OP_NOP10 => {
+                    if self
+                        .flags
+                        .has(ScriptFlags::VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
+                    {
                         return Err(ScriptError::BadOpcode);
                     }
                 }
 
                 // Reserved opcodes
-                Opcodes::OP_RESERVED | Opcodes::OP_VER | Opcodes::OP_VERIF
-                | Opcodes::OP_VERNOTIF | Opcodes::OP_RESERVED1 | Opcodes::OP_RESERVED2 => {
+                Opcodes::OP_RESERVED
+                | Opcodes::OP_VER
+                | Opcodes::OP_VERIF
+                | Opcodes::OP_VERNOTIF
+                | Opcodes::OP_RESERVED1
+                | Opcodes::OP_RESERVED2 => {
                     return Err(ScriptError::BadOpcode);
                 }
 
                 // These were already handled above but need to be listed for exhaustiveness
-                Opcodes::OP_0 | Opcodes::OP_PUSHDATA1 | Opcodes::OP_PUSHDATA2
-                | Opcodes::OP_PUSHDATA4 | Opcodes::OP_IF | Opcodes::OP_NOTIF
-                | Opcodes::OP_ELSE | Opcodes::OP_ENDIF => {
+                Opcodes::OP_0
+                | Opcodes::OP_PUSHDATA1
+                | Opcodes::OP_PUSHDATA2
+                | Opcodes::OP_PUSHDATA4
+                | Opcodes::OP_IF
+                | Opcodes::OP_NOTIF
+                | Opcodes::OP_ELSE
+                | Opcodes::OP_ENDIF => {
                     // Already handled in the data push or conditional sections above
                 }
 
@@ -1339,9 +1372,13 @@ impl<'a> ScriptInterpreter<'a> {
                 }
 
                 // Disabled opcodes (already handled above, but catch-all for safety)
-                Opcodes::OP_2MUL | Opcodes::OP_2DIV | Opcodes::OP_MUL
-                | Opcodes::OP_DIV | Opcodes::OP_MOD
-                | Opcodes::OP_LSHIFT | Opcodes::OP_RSHIFT => {
+                Opcodes::OP_2MUL
+                | Opcodes::OP_2DIV
+                | Opcodes::OP_MUL
+                | Opcodes::OP_DIV
+                | Opcodes::OP_MOD
+                | Opcodes::OP_LSHIFT
+                | Opcodes::OP_RSHIFT => {
                     return Err(ScriptError::DisabledOpcode);
                 }
             }
@@ -1627,8 +1664,8 @@ fn verify_taproot(
     flags: ScriptFlags,
     checker: &dyn SignatureChecker,
 ) -> Result<(), ScriptError> {
-    use crate::crypto::taproot::{ControlBlock, verify_taproot_commitment, TAPSCRIPT_LEAF_VERSION};
     use crate::crypto::schnorr::parse_schnorr_signature;
+    use crate::crypto::taproot::{verify_taproot_commitment, ControlBlock, TAPSCRIPT_LEAF_VERSION};
 
     if witness.is_empty() {
         return Err(ScriptError::WitnessProgramEmpty);
@@ -1651,8 +1688,8 @@ fn verify_taproot(
         // KEY PATH SPENDING: witness = [signature] (possibly with annex stripped)
         let sig_data = witness.get(0).unwrap();
 
-        let (sig_bytes, hash_type) = parse_schnorr_signature(sig_data)
-            .ok_or(ScriptError::SchnorrSigSize)?;
+        let (sig_bytes, hash_type) =
+            parse_schnorr_signature(sig_data).ok_or(ScriptError::SchnorrSigSize)?;
 
         // For key-path spending, we need the checker to compute the sighash
         // and verify against the output key (the 32-byte program itself).
@@ -1667,8 +1704,8 @@ fn verify_taproot(
         let control_data = witness.get(stack_size - 1).unwrap();
         let script_data = witness.get(stack_size - 2).unwrap();
 
-        let control = ControlBlock::parse(control_data)
-            .ok_or(ScriptError::TaprootWrongControlSize)?;
+        let control =
+            ControlBlock::parse(control_data).ok_or(ScriptError::TaprootWrongControlSize)?;
 
         // Verify the merkle commitment: output key matches tweak(internal_key, proof)
         if !verify_taproot_commitment(program, &control, script_data) {
@@ -1684,10 +1721,7 @@ fn verify_taproot(
             // weight limit.
 
             // Compute the tapleaf hash for script-path sighash
-            let leaf_hash = crate::crypto::taproot::tapleaf_hash(
-                control.leaf_version,
-                script_data,
-            );
+            let leaf_hash = crate::crypto::taproot::tapleaf_hash(control.leaf_version, script_data);
 
             // Wrap the checker in a TapscriptChecker so that OP_CHECKSIG
             // in tapscripts uses Schnorr + script-path sighash (BIP342)
@@ -1765,7 +1799,21 @@ mod tests {
 
     #[test]
     fn test_encode_decode_script_num() {
-        for v in [0, 1, -1, 127, -127, 128, -128, 255, -255, 1000, -1000, i32::MAX as i64, -(i32::MAX as i64)] {
+        for v in [
+            0,
+            1,
+            -1,
+            127,
+            -127,
+            128,
+            -128,
+            255,
+            -255,
+            1000,
+            -1000,
+            i32::MAX as i64,
+            -(i32::MAX as i64),
+        ] {
             let encoded = encode_script_num(v);
             let decoded = decode_script_num(&encoded, MAX_SCRIPT_NUM_LENGTH).unwrap();
             assert_eq!(v, decoded, "roundtrip failed for {}", v);
@@ -1852,10 +1900,7 @@ mod tests {
 
     #[test]
     fn test_op_dup() {
-        let script = Script::from_bytes(vec![
-            Opcodes::OP_5 as u8,
-            Opcodes::OP_DUP as u8,
-        ]);
+        let script = Script::from_bytes(vec![Opcodes::OP_5 as u8, Opcodes::OP_DUP as u8]);
         let stack = eval(&script).unwrap();
         assert_eq!(stack.len(), 2);
         assert_eq!(stack[0], stack[1]);
@@ -1923,10 +1968,7 @@ mod tests {
 
     #[test]
     fn test_unbalanced_if() {
-        let script = Script::from_bytes(vec![
-            Opcodes::OP_1 as u8,
-            Opcodes::OP_IF as u8,
-        ]);
+        let script = Script::from_bytes(vec![Opcodes::OP_1 as u8, Opcodes::OP_IF as u8]);
         assert_eq!(eval(&script), Err(ScriptError::UnbalancedConditional));
     }
 
@@ -1934,20 +1976,14 @@ mod tests {
 
     #[test]
     fn test_op_verify_true() {
-        let script = Script::from_bytes(vec![
-            Opcodes::OP_1 as u8,
-            Opcodes::OP_VERIFY as u8,
-        ]);
+        let script = Script::from_bytes(vec![Opcodes::OP_1 as u8, Opcodes::OP_VERIFY as u8]);
         let stack = eval(&script).unwrap();
         assert!(stack.is_empty()); // VERIFY consumes the element
     }
 
     #[test]
     fn test_op_verify_false() {
-        let script = Script::from_bytes(vec![
-            Opcodes::OP_0 as u8,
-            Opcodes::OP_VERIFY as u8,
-        ]);
+        let script = Script::from_bytes(vec![Opcodes::OP_0 as u8, Opcodes::OP_VERIFY as u8]);
         assert_eq!(eval(&script), Err(ScriptError::VerifyFailed));
     }
 
@@ -2016,9 +2052,13 @@ mod tests {
     #[test]
     fn test_disabled_opcodes() {
         let disabled = [
-            Opcodes::OP_MUL, Opcodes::OP_DIV, Opcodes::OP_MOD,
-            Opcodes::OP_LSHIFT, Opcodes::OP_RSHIFT,
-            Opcodes::OP_2MUL, Opcodes::OP_2DIV,
+            Opcodes::OP_MUL,
+            Opcodes::OP_DIV,
+            Opcodes::OP_MOD,
+            Opcodes::OP_LSHIFT,
+            Opcodes::OP_RSHIFT,
+            Opcodes::OP_2MUL,
+            Opcodes::OP_2DIV,
         ];
         for op in disabled {
             let script = Script::from_bytes(vec![op as u8]);
@@ -2036,9 +2076,15 @@ mod tests {
         // We use a mock checker that always returns true for OP_CHECKSIG
         struct AlwaysTrue;
         impl SignatureChecker for AlwaysTrue {
-            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
-            fn check_lock_time(&self, _: i64) -> bool { true }
-            fn check_sequence(&self, _: i64) -> bool { true }
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool {
+                true
+            }
+            fn check_lock_time(&self, _: i64) -> bool {
+                true
+            }
+            fn check_sequence(&self, _: i64) -> bool {
+                true
+            }
         }
 
         // Create a "public key"
@@ -2178,9 +2224,15 @@ mod tests {
         // P2WPKH verification with a mock checker that always succeeds
         struct AlwaysTrue;
         impl SignatureChecker for AlwaysTrue {
-            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
-            fn check_lock_time(&self, _: i64) -> bool { true }
-            fn check_sequence(&self, _: i64) -> bool { true }
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool {
+                true
+            }
+            fn check_lock_time(&self, _: i64) -> bool {
+                true
+            }
+            fn check_sequence(&self, _: i64) -> bool {
+                true
+            }
         }
 
         // Create a "public key" and its hash
@@ -2202,9 +2254,8 @@ mod tests {
 
         let checker = AlwaysTrue;
         let flags = ScriptFlags::new(ScriptFlags::VERIFY_WITNESS);
-        let result = verify_script_with_witness(
-            &script_sig, &script_pubkey, &witness, flags, &checker,
-        );
+        let result =
+            verify_script_with_witness(&script_sig, &script_pubkey, &witness, flags, &checker);
         assert!(result.is_ok(), "P2WPKH failed: {:?}", result);
     }
 
@@ -2212,9 +2263,15 @@ mod tests {
     fn test_p2wpkh_wrong_pubkey_hash() {
         struct AlwaysTrue;
         impl SignatureChecker for AlwaysTrue {
-            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
-            fn check_lock_time(&self, _: i64) -> bool { true }
-            fn check_sequence(&self, _: i64) -> bool { true }
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool {
+                true
+            }
+            fn check_lock_time(&self, _: i64) -> bool {
+                true
+            }
+            fn check_sequence(&self, _: i64) -> bool {
+                true
+            }
         }
 
         // scriptPubKey with a hash that doesn't match the witness pubkey
@@ -2227,7 +2284,9 @@ mod tests {
         witness.push(vec![0x02; 33]);
 
         let result = verify_script_with_witness(
-            &Script::new(), &script_pubkey, &witness,
+            &Script::new(),
+            &script_pubkey,
+            &witness,
             ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
             &AlwaysTrue,
         );
@@ -2238,9 +2297,15 @@ mod tests {
     fn test_p2wpkh_nonempty_scriptsig_fails() {
         struct AlwaysTrue;
         impl SignatureChecker for AlwaysTrue {
-            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
-            fn check_lock_time(&self, _: i64) -> bool { true }
-            fn check_sequence(&self, _: i64) -> bool { true }
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool {
+                true
+            }
+            fn check_lock_time(&self, _: i64) -> bool {
+                true
+            }
+            fn check_sequence(&self, _: i64) -> bool {
+                true
+            }
         }
 
         let pubkey = vec![0x02; 33];
@@ -2257,7 +2322,9 @@ mod tests {
         witness.push(pubkey);
 
         let result = verify_script_with_witness(
-            &script_sig, &script_pubkey, &witness,
+            &script_sig,
+            &script_pubkey,
+            &witness,
             ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
             &AlwaysTrue,
         );
@@ -2269,9 +2336,15 @@ mod tests {
         // P2WSH: witness contains stack items + witnessScript
         struct AlwaysTrue;
         impl SignatureChecker for AlwaysTrue {
-            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
-            fn check_lock_time(&self, _: i64) -> bool { true }
-            fn check_sequence(&self, _: i64) -> bool { true }
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool {
+                true
+            }
+            fn check_lock_time(&self, _: i64) -> bool {
+                true
+            }
+            fn check_sequence(&self, _: i64) -> bool {
+                true
+            }
         }
 
         // witnessScript = OP_1 (just pushes true)
@@ -2288,7 +2361,9 @@ mod tests {
         witness.push(witness_script);
 
         let result = verify_script_with_witness(
-            &Script::new(), &script_pubkey, &witness,
+            &Script::new(),
+            &script_pubkey,
+            &witness,
             ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
             &AlwaysTrue,
         );
@@ -2299,9 +2374,15 @@ mod tests {
     fn test_p2wsh_wrong_script_hash() {
         struct AlwaysTrue;
         impl SignatureChecker for AlwaysTrue {
-            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool { true }
-            fn check_lock_time(&self, _: i64) -> bool { true }
-            fn check_sequence(&self, _: i64) -> bool { true }
+            fn check_sig(&self, _: &[u8], _: &[u8], _: &Script) -> bool {
+                true
+            }
+            fn check_lock_time(&self, _: i64) -> bool {
+                true
+            }
+            fn check_sequence(&self, _: i64) -> bool {
+                true
+            }
         }
 
         // scriptPubKey with wrong hash
@@ -2313,7 +2394,9 @@ mod tests {
         witness.push(vec![Opcodes::OP_1 as u8]); // witnessScript
 
         let result = verify_script_with_witness(
-            &Script::new(), &script_pubkey, &witness,
+            &Script::new(),
+            &script_pubkey,
+            &witness,
             ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
             &AlwaysTrue,
         );
@@ -2331,7 +2414,9 @@ mod tests {
         witness.push(vec![1]);
 
         let result = verify_script_with_witness(
-            &Script::new(), &script_pubkey, &witness,
+            &Script::new(),
+            &script_pubkey,
+            &witness,
             ScriptFlags::new(ScriptFlags::VERIFY_WITNESS),
             &NoSigChecker,
         );
@@ -2353,8 +2438,10 @@ mod tests {
         // Review finding #14: ScriptFlags::standard() was missing
         // VERIFY_TAPROOT, so taproot outputs were treated as anyone-can-spend.
         let flags = ScriptFlags::standard();
-        assert!(flags.has(ScriptFlags::VERIFY_TAPROOT),
-            "standard() must include VERIFY_TAPROOT");
+        assert!(
+            flags.has(ScriptFlags::VERIFY_TAPROOT),
+            "standard() must include VERIFY_TAPROOT"
+        );
     }
 
     #[test]
@@ -2376,19 +2463,20 @@ mod tests {
         let big_script = Script::from_bytes(script_bytes);
 
         // Legacy mode should reject it.
-        let mut legacy_interp = ScriptInterpreter::new(
-            ScriptFlags::new(0), &NoSigChecker,
+        let mut legacy_interp = ScriptInterpreter::new(ScriptFlags::new(0), &NoSigChecker);
+        assert_eq!(
+            legacy_interp.eval_script(&big_script),
+            Err(ScriptError::ScriptSize)
         );
-        assert_eq!(legacy_interp.eval_script(&big_script), Err(ScriptError::ScriptSize));
 
         // Tapscript mode should accept it.
-        let mut tap_interp = ScriptInterpreter::new_tapscript(
-            ScriptFlags::new(0), &NoSigChecker,
-        );
+        let mut tap_interp = ScriptInterpreter::new_tapscript(ScriptFlags::new(0), &NoSigChecker);
         // Push a true value first so the script doesn't fail with empty stack.
         tap_interp.push(vec![1]).unwrap();
-        assert!(tap_interp.eval_script(&big_script).is_ok(),
-            "tapscript mode should allow scripts > 10,000 bytes");
+        assert!(
+            tap_interp.eval_script(&big_script).is_ok(),
+            "tapscript mode should allow scripts > 10,000 bytes"
+        );
     }
 
     #[test]
@@ -2401,18 +2489,19 @@ mod tests {
         let big_script = Script::from_bytes(script_bytes);
 
         // Legacy mode should reject it.
-        let mut legacy_interp = ScriptInterpreter::new(
-            ScriptFlags::new(0), &NoSigChecker,
+        let mut legacy_interp = ScriptInterpreter::new(ScriptFlags::new(0), &NoSigChecker);
+        assert_eq!(
+            legacy_interp.eval_script(&big_script),
+            Err(ScriptError::OpCount)
         );
-        assert_eq!(legacy_interp.eval_script(&big_script), Err(ScriptError::OpCount));
 
         // Tapscript mode should accept it.
-        let mut tap_interp = ScriptInterpreter::new_tapscript(
-            ScriptFlags::new(0), &NoSigChecker,
-        );
+        let mut tap_interp = ScriptInterpreter::new_tapscript(ScriptFlags::new(0), &NoSigChecker);
         tap_interp.push(vec![1]).unwrap();
-        assert!(tap_interp.eval_script(&big_script).is_ok(),
-            "tapscript mode should allow > 201 non-push opcodes");
+        assert!(
+            tap_interp.eval_script(&big_script).is_ok(),
+            "tapscript mode should allow > 201 non-push opcodes"
+        );
     }
 
     #[test]
@@ -2420,9 +2509,7 @@ mod tests {
         // Safety net: legacy limits must remain intact after the BIP342 change.
         let script_bytes = vec![Opcodes::OP_NOP as u8; 10_001];
         let script = Script::from_bytes(script_bytes);
-        let mut interp = ScriptInterpreter::new(
-            ScriptFlags::new(0), &NoSigChecker,
-        );
+        let mut interp = ScriptInterpreter::new(ScriptFlags::new(0), &NoSigChecker);
         assert_eq!(interp.eval_script(&script), Err(ScriptError::ScriptSize));
     }
 
@@ -2431,9 +2518,7 @@ mod tests {
         // Safety net: legacy limits must remain intact after the BIP342 change.
         let script_bytes = vec![Opcodes::OP_NOP as u8; 202];
         let script = Script::from_bytes(script_bytes);
-        let mut interp = ScriptInterpreter::new(
-            ScriptFlags::new(0), &NoSigChecker,
-        );
+        let mut interp = ScriptInterpreter::new(ScriptFlags::new(0), &NoSigChecker);
         assert_eq!(interp.eval_script(&script), Err(ScriptError::OpCount));
     }
 }

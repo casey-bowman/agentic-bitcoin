@@ -3,13 +3,13 @@
 //! Constructs and signs Bitcoin transactions using wallet keys.
 //! Supports P2PKH (legacy) and P2WPKH (native SegWit) inputs.
 
+use super::keys::PrivateKey;
 use crate::crypto::signing::{sighash_type, SpentOutput, TransactionSignatureChecker};
 use crate::primitives::{Amount, OutPoint, Transaction, TxIn, TxOut};
-use crate::script::{Opcodes, Script, ScriptBuilder};
 use crate::script::witness::Witness;
-use super::keys::PrivateKey;
+use crate::script::{Opcodes, Script, ScriptBuilder};
 
-use secp256k1::{Secp256k1, Message};
+use secp256k1::{Message, Secp256k1};
 
 /// Errors during transaction building
 #[derive(Debug, Clone)]
@@ -237,20 +237,20 @@ impl TransactionBuilder {
                 tx.inputs[i].witness = witness;
             } else if info.script_pubkey.is_p2tr() {
                 // Taproot P2TR signing (BIP341/BIP342)
-                let spent_outputs: Vec<SpentOutput> = self.inputs.iter().map(|inp| {
-                    SpentOutput {
+                let spent_outputs: Vec<SpentOutput> = self
+                    .inputs
+                    .iter()
+                    .map(|inp| SpentOutput {
                         amount: inp.amount,
                         script_pubkey: inp.script_pubkey.clone(),
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 // Empty scriptSig for Taproot (must be set before creating checker
                 // which borrows &tx immutably)
                 tx.inputs[i].script_sig = Script::new();
 
-                let checker = TransactionSignatureChecker::new_taproot(
-                    &tx, i, spent_outputs,
-                );
+                let checker = TransactionSignatureChecker::new_taproot(&tx, i, spent_outputs);
 
                 if let Some(ref script_path) = info.tap_script_path {
                     // SCRIPT-PATH spending (BIP342)
@@ -261,10 +261,7 @@ impl TransactionBuilder {
                     );
 
                     // 2. Sign with the raw (untweaked) internal key for script-path
-                    let sig = crate::crypto::schnorr::sign_schnorr(
-                        key.inner(),
-                        &sighash,
-                    );
+                    let sig = crate::crypto::schnorr::sign_schnorr(key.inner(), &sighash);
 
                     // 3. Build witness: [signature, script, control_block]
                     let mut witness = Witness::new();
@@ -276,11 +273,8 @@ impl TransactionBuilder {
                     // KEY-PATH spending (BIP341)
                     let sighash = checker.compute_taproot_sighash(0x00); // SIGHASH_DEFAULT
 
-                    let (sig, _output_key) = crate::crypto::schnorr::sign_schnorr_tweaked(
-                        key.inner(),
-                        None,
-                        &sighash,
-                    );
+                    let (sig, _output_key) =
+                        crate::crypto::schnorr::sign_schnorr_tweaked(key.inner(), None, &sighash);
 
                     let mut witness = Witness::new();
                     witness.push(sig.to_vec());
@@ -372,8 +366,7 @@ fn sign_hash(
     key: &PrivateKey,
     hash: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
-    let msg = Message::from_digest_slice(hash)
-        .map_err(|e| format!("invalid message: {}", e))?;
+    let msg = Message::from_digest_slice(hash).map_err(|e| format!("invalid message: {}", e))?;
 
     let sig = secp.sign_ecdsa(&msg, key.inner());
 
@@ -581,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_sign_p2tr_produces_witness() {
-        use secp256k1::{Keypair, XOnlyPublicKey, Scalar};
+        use secp256k1::{Keypair, Scalar, XOnlyPublicKey};
 
         // Generate a key and derive the P2TR output key
         let key = PrivateKey::generate(true, true);
@@ -592,9 +585,7 @@ mod tests {
         let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
 
         // Compute tweaked output key (key-path-only, no merkle root)
-        let tweak = crate::crypto::taproot::taptweak_hash(
-            &internal_xonly.serialize(), None,
-        );
+        let tweak = crate::crypto::taproot::taptweak_hash(&internal_xonly.serialize(), None);
         let scalar = Scalar::from_be_bytes(tweak).unwrap();
         let (output_key, _) = internal_xonly.add_tweak(&secp, &scalar).unwrap();
 
@@ -623,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_sign_p2tr_signature_verifies() {
-        use secp256k1::{Keypair, XOnlyPublicKey, Scalar};
+        use secp256k1::{Keypair, Scalar, XOnlyPublicKey};
 
         let key = PrivateKey::generate(true, true);
         let secret = key.inner();
@@ -632,9 +623,7 @@ mod tests {
         let keypair = Keypair::from_secret_key(&secp, secret);
         let (internal_xonly, _) = XOnlyPublicKey::from_keypair(&keypair);
 
-        let tweak = crate::crypto::taproot::taptweak_hash(
-            &internal_xonly.serialize(), None,
-        );
+        let tweak = crate::crypto::taproot::taptweak_hash(&internal_xonly.serialize(), None);
         let scalar = Scalar::from_be_bytes(tweak).unwrap();
         let (output_key, _) = internal_xonly.add_tweak(&secp, &scalar).unwrap();
 

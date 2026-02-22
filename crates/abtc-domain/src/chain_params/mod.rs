@@ -2,11 +2,11 @@
 //!
 //! Network-specific configuration including magic bytes, ports, DNS seeds, and genesis blocks.
 
-pub use crate::consensus::Network;
 use crate::consensus::ConsensusParams;
-use crate::primitives::{Block, BlockHeader, Hash256, Transaction, TxOut};
+pub use crate::consensus::Network;
 use crate::primitives::hash::BlockHash;
 use crate::primitives::Amount;
+use crate::primitives::{Block, BlockHeader, Hash256, Transaction, TxOut};
 use crate::script::Script;
 
 /// A hardcoded checkpoint: a known-good (height, block hash) pair.
@@ -72,19 +72,58 @@ impl ChainParams {
             ],
             consensus: ConsensusParams::mainnet(),
             checkpoints: vec![
-                Checkpoint { height: 11111,  hash_hex: "0000000069e244f73d78e8fd29ba2fd2ed618bd6fa2ee92559f542fdb26e7c1d" },
-                Checkpoint { height: 33333,  hash_hex: "000000002dd5588a74784eaa7ab0507a18ad16a236e7b1ce69f00d7ddfb5d0a6" },
-                Checkpoint { height: 74000,  hash_hex: "0000000000573993a3c9e41ce34471c079dcf5f52a0e824a81e7f953b8661a20" },
-                Checkpoint { height: 105000, hash_hex: "00000000000291ce28027faea320c8d2b054b2e0fe44a773f3eefb151d6bdc97" },
-                Checkpoint { height: 134444, hash_hex: "00000000000005b12ffd4cd315cd34ffd4a594f430ac814c91184a0d42d2b0fe" },
-                Checkpoint { height: 168000, hash_hex: "000000000000099e61ea72015e79632f216fe6cb33d7899acb35b75c8303b763" },
-                Checkpoint { height: 193000, hash_hex: "000000000000059f452a5f7340de6682a977387c17010ff6e6c3bd83ca8b1317" },
-                Checkpoint { height: 210000, hash_hex: "000000000000048b95347e83192f69cf0366076336c639f9b7228e9ba171342e" },
-                Checkpoint { height: 216116, hash_hex: "00000000000001b4f4b433e81ee46494af945cf96014816a4e2370f11b23df4e" },
-                Checkpoint { height: 225430, hash_hex: "00000000000001c108384350f74090433e7fcf79a606b8e797f065b130575932" },
-                Checkpoint { height: 250000, hash_hex: "000000000000003887df1f29024b06fc2200b55f8af8f35453d7be294df2d214" },
-                Checkpoint { height: 279000, hash_hex: "0000000000000001ae8c72a0b0c301f67e3afca10e819efa9041e458e9bd7e40" },
-                Checkpoint { height: 295000, hash_hex: "00000000000000004d9b4ef50f0f9d686fd69db2e03af35a100370c64632473f" },
+                Checkpoint {
+                    height: 11111,
+                    hash_hex: "0000000069e244f73d78e8fd29ba2fd2ed618bd6fa2ee92559f542fdb26e7c1d",
+                },
+                Checkpoint {
+                    height: 33333,
+                    hash_hex: "000000002dd5588a74784eaa7ab0507a18ad16a236e7b1ce69f00d7ddfb5d0a6",
+                },
+                Checkpoint {
+                    height: 74000,
+                    hash_hex: "0000000000573993a3c9e41ce34471c079dcf5f52a0e824a81e7f953b8661a20",
+                },
+                Checkpoint {
+                    height: 105000,
+                    hash_hex: "00000000000291ce28027faea320c8d2b054b2e0fe44a773f3eefb151d6bdc97",
+                },
+                Checkpoint {
+                    height: 134444,
+                    hash_hex: "00000000000005b12ffd4cd315cd34ffd4a594f430ac814c91184a0d42d2b0fe",
+                },
+                Checkpoint {
+                    height: 168000,
+                    hash_hex: "000000000000099e61ea72015e79632f216fe6cb33d7899acb35b75c8303b763",
+                },
+                Checkpoint {
+                    height: 193000,
+                    hash_hex: "000000000000059f452a5f7340de6682a977387c17010ff6e6c3bd83ca8b1317",
+                },
+                Checkpoint {
+                    height: 210000,
+                    hash_hex: "000000000000048b95347e83192f69cf0366076336c639f9b7228e9ba171342e",
+                },
+                Checkpoint {
+                    height: 216116,
+                    hash_hex: "00000000000001b4f4b433e81ee46494af945cf96014816a4e2370f11b23df4e",
+                },
+                Checkpoint {
+                    height: 225430,
+                    hash_hex: "00000000000001c108384350f74090433e7fcf79a606b8e797f065b130575932",
+                },
+                Checkpoint {
+                    height: 250000,
+                    hash_hex: "000000000000003887df1f29024b06fc2200b55f8af8f35453d7be294df2d214",
+                },
+                Checkpoint {
+                    height: 279000,
+                    hash_hex: "0000000000000001ae8c72a0b0c301f67e3afca10e819efa9041e458e9bd7e40",
+                },
+                Checkpoint {
+                    height: 295000,
+                    hash_hex: "00000000000000004d9b4ef50f0f9d686fd69db2e03af35a100370c64632473f",
+                },
             ],
         }
     }
@@ -103,9 +142,10 @@ impl ChainParams {
                 "testnet-seed.bitcoin.schildbach.de",
             ],
             consensus: ConsensusParams::testnet(),
-            checkpoints: vec![
-                Checkpoint { height: 546, hash_hex: "000000002a936ca763904c3c35fce2f3556c559c0214345d31b1bcebf76acb70" },
-            ],
+            checkpoints: vec![Checkpoint {
+                height: 546,
+                hash_hex: "000000002a936ca763904c3c35fce2f3556c559c0214345d31b1bcebf76acb70",
+            }],
         }
     }
 
@@ -129,9 +169,7 @@ impl ChainParams {
             magic_bytes: [0x0a, 0x03, 0xcf, 0x40],
             p2p_port: 38333,
             rpc_port: 38332,
-            dns_seeds: vec![
-                "signet-seed.example.com",
-            ],
+            dns_seeds: vec!["signet-seed.example.com"],
             consensus: ConsensusParams::signet(),
             checkpoints: vec![],
         }
@@ -207,12 +245,10 @@ fn genesis_mainnet() -> Block {
     let coinbase = Transaction::coinbase(
         1,
         Script::from_slice(b""),
-        vec![
-            TxOut::new(
-                Amount::from_sat(5000000000),
-                Script::from_slice(b""),
-            ),
-        ],
+        vec![TxOut::new(
+            Amount::from_sat(5000000000),
+            Script::from_slice(b""),
+        )],
     );
 
     Block::new(header, vec![coinbase])
@@ -232,12 +268,10 @@ fn genesis_testnet() -> Block {
     let coinbase = Transaction::coinbase(
         1,
         Script::from_slice(b""),
-        vec![
-            TxOut::new(
-                Amount::from_sat(5000000000),
-                Script::from_slice(b""),
-            ),
-        ],
+        vec![TxOut::new(
+            Amount::from_sat(5000000000),
+            Script::from_slice(b""),
+        )],
     );
 
     Block::new(header, vec![coinbase])
@@ -257,12 +291,10 @@ fn genesis_regtest() -> Block {
     let coinbase = Transaction::coinbase(
         1,
         Script::from_slice(&[0x04, 0x23, 0x61, 0x30]),
-        vec![
-            TxOut::new(
-                Amount::from_sat(5000000000),
-                Script::from_slice(b""),
-            ),
-        ],
+        vec![TxOut::new(
+            Amount::from_sat(5000000000),
+            Script::from_slice(b""),
+        )],
     );
 
     Block::new(header, vec![coinbase])
@@ -282,12 +314,10 @@ fn genesis_signet() -> Block {
     let coinbase = Transaction::coinbase(
         1,
         Script::from_slice(b""),
-        vec![
-            TxOut::new(
-                Amount::from_sat(5000000000),
-                Script::from_slice(b""),
-            ),
-        ],
+        vec![TxOut::new(
+            Amount::from_sat(5000000000),
+            Script::from_slice(b""),
+        )],
     );
 
     Block::new(header, vec![coinbase])

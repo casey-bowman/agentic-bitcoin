@@ -71,18 +71,36 @@ impl CoinSelector {
         }
 
         match strategy {
-            SelectionStrategy::LargestFirst => {
-                Self::select_largest_first(coins, target, fee_rate_sat_per_vb, output_size, overhead_size)
-            }
-            SelectionStrategy::SmallestFirst => {
-                Self::select_smallest_first(coins, target, fee_rate_sat_per_vb, output_size, overhead_size)
-            }
-            SelectionStrategy::ClosestMatch => {
-                Self::select_closest_match(coins, target, fee_rate_sat_per_vb, output_size, overhead_size)
-            }
+            SelectionStrategy::LargestFirst => Self::select_largest_first(
+                coins,
+                target,
+                fee_rate_sat_per_vb,
+                output_size,
+                overhead_size,
+            ),
+            SelectionStrategy::SmallestFirst => Self::select_smallest_first(
+                coins,
+                target,
+                fee_rate_sat_per_vb,
+                output_size,
+                overhead_size,
+            ),
+            SelectionStrategy::ClosestMatch => Self::select_closest_match(
+                coins,
+                target,
+                fee_rate_sat_per_vb,
+                output_size,
+                overhead_size,
+            ),
             SelectionStrategy::BranchAndBound => {
                 // Fall back to largest-first for now — B&B is complex
-                Self::select_largest_first(coins, target, fee_rate_sat_per_vb, output_size, overhead_size)
+                Self::select_largest_first(
+                    coins,
+                    target,
+                    fee_rate_sat_per_vb,
+                    output_size,
+                    overhead_size,
+                )
             }
         }
     }
@@ -139,7 +157,8 @@ impl CoinSelector {
     ) -> Result<CoinSelectionResult, String> {
         // Try to find a single coin that covers target + estimated single-input fee
         let single_input_size = coins.iter().map(|c| c.input_size).min().unwrap_or(148);
-        let est_fee = ((overhead_size + single_input_size + output_size) as f64 * fee_rate).ceil() as i64;
+        let est_fee =
+            ((overhead_size + single_input_size + output_size) as f64 * fee_rate).ceil() as i64;
         let needed = target.as_sat() + est_fee;
 
         let mut best: Option<&Coin> = None;
@@ -234,9 +253,9 @@ mod tests {
         let result = CoinSelector::select(
             &coins,
             Amount::from_sat(150_000),
-            1.0,  // 1 sat/vB
-            34,   // single output
-            10,   // overhead
+            1.0, // 1 sat/vB
+            34,  // single output
+            10,  // overhead
             SelectionStrategy::LargestFirst,
         )
         .unwrap();
@@ -328,9 +347,7 @@ mod tests {
         .unwrap();
 
         // change = total - target - fee
-        let expected_change = result.total_value.as_sat()
-            - 100_000
-            - result.estimated_fee.as_sat();
+        let expected_change = result.total_value.as_sat() - 100_000 - result.estimated_fee.as_sat();
         assert_eq!(result.change.as_sat(), expected_change);
         assert!(result.change.as_sat() > 0);
     }

@@ -19,7 +19,9 @@ pub trait SignalsRbf {
 
 impl SignalsRbf for Transaction {
     fn signals_rbf(&self) -> bool {
-        self.inputs.iter().any(|input| input.sequence < Sequence::MAX_NONFINAL)
+        self.inputs
+            .iter()
+            .any(|input| input.sequence < Sequence::MAX_NONFINAL)
     }
 }
 
@@ -30,10 +32,7 @@ pub enum RbfError {
     NotSignaling(Txid),
     /// The replacement pays an insufficient absolute fee
     /// (must be higher than the sum of fees of all replaced transactions)
-    InsufficientFee {
-        required: Amount,
-        provided: Amount,
-    },
+    InsufficientFee { required: Amount, provided: Amount },
     /// The replacement fee rate is too low
     /// (must be higher than the original's fee rate)
     InsufficientFeeRate {
@@ -42,16 +41,10 @@ pub enum RbfError {
     },
     /// The replacement must pay for its own additional bandwidth
     /// (incremental relay fee: at least min_relay_fee * replacement_size)
-    InsufficientRelay {
-        required: Amount,
-        provided: Amount,
-    },
+    InsufficientRelay { required: Amount, provided: Amount },
     /// Too many original transactions would be evicted
     /// (BIP125 rule #5: max 100 replaced transactions)
-    TooManyReplacements {
-        count: usize,
-        max: usize,
-    },
+    TooManyReplacements { count: usize, max: usize },
     /// Replacement creates new unconfirmed inputs
     /// (BIP125 rule #2: replacement must not introduce new unconfirmed parents)
     NewUnconfirmedInputs,
@@ -158,8 +151,7 @@ impl RbfPolicy {
 
         // Rule #4: Replacement must pay for its own relay bandwidth
         // The additional fee must be at least min_relay_fee * replacement_vsize
-        let incremental_fee =
-            (replacement_size as f64 * MIN_INCREMENTAL_RELAY_FEE).ceil() as i64;
+        let incremental_fee = (replacement_size as f64 * MIN_INCREMENTAL_RELAY_FEE).ceil() as i64;
         let fee_increase = replacement_fee.as_sat() - total_original_fee;
         if fee_increase < incremental_fee {
             return Err(RbfError::InsufficientRelay {
@@ -219,16 +211,16 @@ mod tests {
     fn test_replacement_valid() {
         let originals = vec![(
             Txid::zero(),
-            Amount::from_sat(1000),  // original fee
-            200,                      // original size
-            true,                     // signals RBF
+            Amount::from_sat(1000), // original fee
+            200,                    // original size
+            true,                   // signals RBF
         )];
 
         let result = RbfPolicy::check_replacement(
             Amount::from_sat(2000), // higher fee
-            200,                     // same size
+            200,                    // same size
             &originals,
-            1,                       // 1 transaction evicted
+            1, // 1 transaction evicted
         );
 
         assert!(result.is_ok());
@@ -236,12 +228,7 @@ mod tests {
 
     #[test]
     fn test_replacement_insufficient_fee() {
-        let originals = vec![(
-            Txid::zero(),
-            Amount::from_sat(1000),
-            200,
-            true,
-        )];
+        let originals = vec![(Txid::zero(), Amount::from_sat(1000), 200, true)];
 
         let result = RbfPolicy::check_replacement(
             Amount::from_sat(500), // lower fee — should fail
@@ -262,24 +249,14 @@ mod tests {
             false, // NOT signaling
         )];
 
-        let result = RbfPolicy::check_replacement(
-            Amount::from_sat(2000),
-            200,
-            &originals,
-            1,
-        );
+        let result = RbfPolicy::check_replacement(Amount::from_sat(2000), 200, &originals, 1);
 
         assert!(matches!(result, Err(RbfError::NotSignaling(_))));
     }
 
     #[test]
     fn test_too_many_replacements() {
-        let originals = vec![(
-            Txid::zero(),
-            Amount::from_sat(1000),
-            200,
-            true,
-        )];
+        let originals = vec![(Txid::zero(), Amount::from_sat(1000), 200, true)];
 
         let result = RbfPolicy::check_replacement(
             Amount::from_sat(2000),
@@ -301,12 +278,7 @@ mod tests {
         ];
 
         // Replacement fee must exceed 3000
-        let result = RbfPolicy::check_replacement(
-            Amount::from_sat(5000),
-            250,
-            &originals,
-            3,
-        );
+        let result = RbfPolicy::check_replacement(Amount::from_sat(5000), 250, &originals, 3);
 
         assert!(result.is_ok());
     }
@@ -321,12 +293,7 @@ mod tests {
         )];
 
         // Higher abs fee but lower fee rate (2000/500 = 4 sat/vB < 5)
-        let result = RbfPolicy::check_replacement(
-            Amount::from_sat(2000),
-            500,
-            &originals,
-            1,
-        );
+        let result = RbfPolicy::check_replacement(Amount::from_sat(2000), 500, &originals, 1);
 
         assert!(matches!(result, Err(RbfError::InsufficientFeeRate { .. })));
     }

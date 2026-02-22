@@ -3,7 +3,7 @@
 //! This module defines the port traits for peer-to-peer network communication.
 //! Implementations handle the details of connecting to peers, sending messages, and receiving blocks/transactions.
 
-use abtc_domain::primitives::{Block, Transaction, BlockHeader};
+use abtc_domain::primitives::{Block, BlockHeader, Transaction};
 use std::error::Error;
 use std::net::SocketAddr;
 
@@ -27,13 +27,9 @@ pub enum NetworkMessage {
     /// Verack message - acknowledges version
     Verack,
     /// Inv message - announces available transactions/blocks
-    Inv {
-        items: Vec<InventoryItem>,
-    },
+    Inv { items: Vec<InventoryItem> },
     /// GetData message - requests transactions/blocks
-    GetData {
-        items: Vec<InventoryItem>,
-    },
+    GetData { items: Vec<InventoryItem> },
     /// GetBlocks message - requests block hashes
     GetBlocks {
         version: u32,
@@ -47,25 +43,15 @@ pub enum NetworkMessage {
         hash_stop: abtc_domain::primitives::BlockHash,
     },
     /// Tx message - transmits a transaction
-    Tx {
-        tx: Transaction,
-    },
+    Tx { tx: Transaction },
     /// Block message - transmits a block
-    Block {
-        block: Block,
-    },
+    Block { block: Block },
     /// Headers message - transmits block headers
-    Headers {
-        headers: Vec<BlockHeader>,
-    },
+    Headers { headers: Vec<BlockHeader> },
     /// Ping message - requests pong
-    Ping {
-        nonce: u64,
-    },
+    Ping { nonce: u64 },
     /// Pong message - responds to ping
-    Pong {
-        nonce: u64,
-    },
+    Pong { nonce: u64 },
     /// Addr message - announces addresses of peers
     Addr {
         addresses: Vec<(u32, SocketAddr)>, // (timestamp, address)
@@ -74,14 +60,10 @@ pub enum NetworkMessage {
     GetAddr,
     /// PackageTx message — transmit a package of related transactions (BIP331).
     /// Transactions are in topological order (parents before children).
-    PackageTx {
-        transactions: Vec<Transaction>,
-    },
+    PackageTx { transactions: Vec<Transaction> },
     /// SendPackages message — negotiate package relay support (BIP331).
     /// Sent during version handshake to indicate support.
-    SendPackages {
-        version: u32,
-    },
+    SendPackages { version: u32 },
 }
 
 /// Inventory item identifying a transaction or block.
@@ -116,13 +98,9 @@ pub struct PeerInfo {
 #[derive(Clone, Debug)]
 pub enum PeerEvent {
     /// Peer has successfully connected
-    Connected {
-        peer_info: PeerInfo,
-    },
+    Connected { peer_info: PeerInfo },
     /// Peer has disconnected
-    Disconnected {
-        peer_id: u64,
-    },
+    Disconnected { peer_id: u64 },
     /// Message received from peer
     MessageReceived {
         peer_id: u64,

@@ -172,8 +172,8 @@ impl std::fmt::Debug for PrivateKey {
 impl PublicKey {
     /// Create a public key from raw bytes (33 compressed or 65 uncompressed).
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, KeyError> {
-        let key = secp256k1::PublicKey::from_slice(bytes)
-            .map_err(|_| KeyError::InvalidPublicKey)?;
+        let key =
+            secp256k1::PublicKey::from_slice(bytes).map_err(|_| KeyError::InvalidPublicKey)?;
         let compressed = bytes.len() == 33;
         Ok(PublicKey { key, compressed })
     }
@@ -208,8 +208,7 @@ impl PublicKey {
 // ---- Base58Check encoding/decoding ----
 
 /// Alphabet for Base58 encoding (Bitcoin variant)
-const BASE58_ALPHABET: &[u8; 58] =
-    b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BASE58_ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 /// Encode data with Base58Check (payload → Base58(payload | checksum))
 pub fn base58check_encode(payload: &[u8]) -> String {

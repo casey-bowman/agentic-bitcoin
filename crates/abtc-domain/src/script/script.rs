@@ -346,11 +346,7 @@ mod tests {
 
     #[test]
     fn test_script_p2pkh() {
-        let mut script_bytes = vec![
-            Opcodes::OP_DUP as u8,
-            Opcodes::OP_HASH160 as u8,
-            20,
-        ];
+        let mut script_bytes = vec![Opcodes::OP_DUP as u8, Opcodes::OP_HASH160 as u8, 20];
         script_bytes.extend_from_slice(&[0u8; 20]);
         script_bytes.push(Opcodes::OP_EQUALVERIFY as u8);
         script_bytes.push(Opcodes::OP_CHECKSIG as u8);

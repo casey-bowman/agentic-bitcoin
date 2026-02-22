@@ -147,7 +147,11 @@ impl ChainEventBus {
 
     /// Convenience: emit a BlockConnected event.
     pub fn notify_block_connected(&self, hash: BlockHash, height: u32, num_txs: usize) -> usize {
-        self.emit(ChainEvent::BlockConnected { hash, height, num_txs })
+        self.emit(ChainEvent::BlockConnected {
+            hash,
+            height,
+            num_txs,
+        })
     }
 
     /// Convenience: emit a BlockDisconnected event.
@@ -194,11 +198,14 @@ mod tests {
         bus.notify_block_connected(hash, 100, 5);
 
         let event = rx.recv().await.unwrap();
-        assert_eq!(event, ChainEvent::BlockConnected {
-            hash,
-            height: 100,
-            num_txs: 5,
-        });
+        assert_eq!(
+            event,
+            ChainEvent::BlockConnected {
+                hash,
+                height: 100,
+                num_txs: 5,
+            }
+        );
     }
 
     #[tokio::test]
@@ -235,10 +242,7 @@ mod tests {
         bus.notify_block_disconnected(hash, 50);
 
         let event = rx.recv().await.unwrap();
-        assert_eq!(event, ChainEvent::BlockDisconnected {
-            hash,
-            height: 50,
-        });
+        assert_eq!(event, ChainEvent::BlockDisconnected { hash, height: 50 });
     }
 
     #[tokio::test]
@@ -250,19 +254,25 @@ mod tests {
         bus.notify_tx_added(txid, 250, 5000);
 
         let event = rx.recv().await.unwrap();
-        assert_eq!(event, ChainEvent::TransactionAddedToMempool {
-            txid,
-            vsize: 250,
-            fee: 5000,
-        });
+        assert_eq!(
+            event,
+            ChainEvent::TransactionAddedToMempool {
+                txid,
+                vsize: 250,
+                fee: 5000,
+            }
+        );
 
         bus.notify_tx_removed(txid, MempoolRemovalReason::Block);
 
         let event = rx.recv().await.unwrap();
-        assert_eq!(event, ChainEvent::TransactionRemovedFromMempool {
-            txid,
-            reason: MempoolRemovalReason::Block,
-        });
+        assert_eq!(
+            event,
+            ChainEvent::TransactionRemovedFromMempool {
+                txid,
+                reason: MempoolRemovalReason::Block,
+            }
+        );
     }
 
     #[tokio::test]
@@ -314,11 +324,14 @@ mod tests {
 
         // Should be receivable from the original's subscriber
         let event = rx.try_recv().unwrap();
-        assert_eq!(event, ChainEvent::BlockConnected {
-            hash: test_hash(0x20),
-            height: 42,
-            num_txs: 7,
-        });
+        assert_eq!(
+            event,
+            ChainEvent::BlockConnected {
+                hash: test_hash(0x20),
+                height: 42,
+                num_txs: 7,
+            }
+        );
     }
 
     #[test]

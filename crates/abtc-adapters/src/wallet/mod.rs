@@ -14,19 +14,18 @@ pub mod persistent;
 pub use file_store::FileBasedWalletStore;
 pub use persistent::PersistentWallet;
 
-use async_trait::async_trait;
 use abtc_domain::primitives::{Amount, OutPoint, Transaction, TxOut};
 use abtc_domain::wallet::address::{Address, AddressType};
 use abtc_domain::wallet::coin_selection::{Coin, CoinSelector, SelectionStrategy};
 use abtc_domain::wallet::keys::PrivateKey;
 use abtc_domain::wallet::tx_builder::{
-    InputInfo, TransactionBuilder,
-    P2PKH_INPUT_VSIZE, P2WPKH_INPUT_VSIZE, P2WPKH_OUTPUT_VSIZE,
+    InputInfo, TransactionBuilder, P2PKH_INPUT_VSIZE, P2WPKH_INPUT_VSIZE, P2WPKH_OUTPUT_VSIZE,
     TX_OVERHEAD_VSIZE,
 };
+use abtc_ports::wallet::store::{WalletKeyEntry, WalletSnapshot, WalletUtxoEntry};
 use abtc_ports::wallet::UnspentOutput;
-use abtc_ports::wallet::store::{WalletSnapshot, WalletKeyEntry, WalletUtxoEntry};
 use abtc_ports::{Balance, WalletPort};
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -170,10 +169,8 @@ impl InMemoryWallet {
             .iter()
             .map(|u| {
                 let script_bytes = u.output.script_pubkey.as_bytes();
-                let script_hex: String = script_bytes
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect();
+                let script_hex: String =
+                    script_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
                 WalletUtxoEntry {
                     txid_hex: u.outpoint.txid.to_hex_reversed(),
@@ -238,9 +235,7 @@ impl InMemoryWallet {
 
             // Parse script pubkey from hex
             let script_bytes = Self::hex_to_bytes(&entry.script_pubkey_hex)
-                .ok_or_else(|| {
-                    format!("invalid script hex: {}", entry.script_pubkey_hex)
-                })?;
+                .ok_or_else(|| format!("invalid script hex: {}", entry.script_pubkey_hex))?;
 
             utxos.push(UnspentOutput {
                 outpoint: OutPoint::new(txid, entry.vout),
@@ -385,8 +380,7 @@ impl WalletPort for InMemoryWallet {
             .collect();
 
         // Calculate total output size
-        let output_vsize: u32 = outputs.len() as u32 * P2WPKH_OUTPUT_VSIZE
-            + P2WPKH_OUTPUT_VSIZE; // +1 for change output
+        let output_vsize: u32 = outputs.len() as u32 * P2WPKH_OUTPUT_VSIZE + P2WPKH_OUTPUT_VSIZE; // +1 for change output
 
         // Select coins
         let selection = CoinSelector::select(
@@ -453,9 +447,7 @@ impl WalletPort for InMemoryWallet {
             let utxo = utxos
                 .iter()
                 .find(|u| u.outpoint == input.previous_output)
-                .ok_or_else(|| {
-                    format!("unknown UTXO for input {}", input.previous_output)
-                })?;
+                .ok_or_else(|| format!("unknown UTXO for input {}", input.previous_output))?;
 
             let wallet_key = self.find_key_for_script(&utxo.output.script_pubkey).await;
 
@@ -541,7 +533,8 @@ impl WalletPort for InMemoryWallet {
         let mut counter = self.key_counter.write().await;
         *counter += 1;
 
-        tracing::debug!("Generated new {} address: {}",
+        tracing::debug!(
+            "Generated new {} address: {}",
             match self.address_type {
                 AddressType::P2PKH => "P2PKH",
                 AddressType::P2WPKH => "P2WPKH",
@@ -560,8 +553,8 @@ impl WalletPort for InMemoryWallet {
         label: Option<&str>,
         _rescan: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let key = PrivateKey::from_wif(privkey_wif)
-            .map_err(|e| format!("invalid WIF key: {}", e))?;
+        let key =
+            PrivateKey::from_wif(privkey_wif).map_err(|e| format!("invalid WIF key: {}", e))?;
 
         let pubkey = key.public_key();
 
@@ -657,7 +650,10 @@ mod tests {
         let wif = key.to_wif();
 
         // Import it
-        wallet.import_key(&wif, Some("imported"), false).await.unwrap();
+        wallet
+            .import_key(&wif, Some("imported"), false)
+            .await
+            .unwrap();
         assert_eq!(wallet.key_count().await, 1);
     }
 
@@ -667,10 +663,7 @@ mod tests {
 
         let utxo = UnspentOutput {
             outpoint: OutPoint::new(abtc_domain::Txid::zero(), 0),
-            output: TxOut::new(
-                Amount::from_sat(100_000),
-                abtc_domain::Script::new(),
-            ),
+            output: TxOut::new(Amount::from_sat(100_000), abtc_domain::Script::new()),
             confirmations: 6,
             is_coinbase: false,
         };
@@ -733,10 +726,7 @@ mod tests {
         wallet
             .add_utxo(UnspentOutput {
                 outpoint: OutPoint::new(abtc_domain::Txid::zero(), 0),
-                output: TxOut::new(
-                    Amount::from_sat(5_000_000_000),
-                    abtc_domain::Script::new(),
-                ),
+                output: TxOut::new(Amount::from_sat(5_000_000_000), abtc_domain::Script::new()),
                 confirmations: 50,
                 is_coinbase: true,
             })
@@ -746,10 +736,7 @@ mod tests {
         wallet
             .add_utxo(UnspentOutput {
                 outpoint: OutPoint::new(abtc_domain::Txid::zero(), 1),
-                output: TxOut::new(
-                    Amount::from_sat(5_000_000_000),
-                    abtc_domain::Script::new(),
-                ),
+                output: TxOut::new(Amount::from_sat(5_000_000_000), abtc_domain::Script::new()),
                 confirmations: 100,
                 is_coinbase: true,
             })
@@ -892,7 +879,10 @@ mod tests {
         use abtc_domain::primitives::TxIn;
         let tx = Transaction::v1(
             vec![TxIn::final_input(op, abtc_domain::Script::new())],
-            vec![TxOut::new(Amount::from_sat(90_000), abtc_domain::Script::new())],
+            vec![TxOut::new(
+                Amount::from_sat(90_000),
+                abtc_domain::Script::new(),
+            )],
             0,
         );
 

@@ -327,19 +327,40 @@ impl std::fmt::Display for VaultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VaultError::InvalidTargetIndex { index, num_outputs } => {
-                write!(f, "target output index {} out of range (tx has {} outputs)", index, num_outputs)
+                write!(
+                    f,
+                    "target output index {} out of range (tx has {} outputs)",
+                    index, num_outputs
+                )
             }
-            VaultError::InsufficientTriggerAmount { expected_min, actual } => {
-                write!(f, "trigger output amount {} < minimum {}", actual, expected_min)
+            VaultError::InsufficientTriggerAmount {
+                expected_min,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "trigger output amount {} < minimum {}",
+                    actual, expected_min
+                )
             }
             VaultError::TriggerScriptMismatch => {
                 write!(f, "trigger output script does not match expected structure")
             }
             VaultError::RecoveryScriptMismatch => {
-                write!(f, "recovery output scriptPubKey does not match committed hash")
+                write!(
+                    f,
+                    "recovery output scriptPubKey does not match committed hash"
+                )
             }
-            VaultError::InsufficientRecoveryAmount { expected_min, actual } => {
-                write!(f, "recovery output amount {} < minimum {}", actual, expected_min)
+            VaultError::InsufficientRecoveryAmount {
+                expected_min,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "recovery output amount {} < minimum {}",
+                    actual, expected_min
+                )
             }
         }
     }
@@ -440,9 +461,7 @@ mod tests {
         let expected_script = build_trigger_script(spend_delay, &leaf_body);
         let vault_amount = Amount::from_sat(1_000_000);
 
-        let tx = make_vault_tx(vec![
-            TxOut::new(vault_amount, expected_script),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(vault_amount, expected_script)]);
 
         let trigger = VaultTriggerInfo {
             target_output_index: 0,
@@ -450,8 +469,13 @@ mod tests {
         };
 
         assert!(verify_vault_trigger(
-            &tx, &trigger, vault_amount, spend_delay, Amount::from_sat(0),
-        ).is_ok());
+            &tx,
+            &trigger,
+            vault_amount,
+            spend_delay,
+            Amount::from_sat(0),
+        )
+        .is_ok());
     }
 
     #[test]
@@ -461,9 +485,7 @@ mod tests {
         let expected_script = build_trigger_script(spend_delay, &leaf_body);
         let vault_amount = Amount::from_sat(1_000_000);
 
-        let tx = make_vault_tx(vec![
-            TxOut::new(Amount::from_sat(500_000), expected_script),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(Amount::from_sat(500_000), expected_script)]);
 
         let trigger = VaultTriggerInfo {
             target_output_index: 0,
@@ -471,9 +493,16 @@ mod tests {
         };
 
         let result = verify_vault_trigger(
-            &tx, &trigger, vault_amount, spend_delay, Amount::from_sat(0),
+            &tx,
+            &trigger,
+            vault_amount,
+            spend_delay,
+            Amount::from_sat(0),
         );
-        assert!(matches!(result, Err(VaultError::InsufficientTriggerAmount { .. })));
+        assert!(matches!(
+            result,
+            Err(VaultError::InsufficientTriggerAmount { .. })
+        ));
     }
 
     #[test]
@@ -484,9 +513,7 @@ mod tests {
         let vault_amount = Amount::from_sat(1_000_000);
 
         // Output is 999,000 — less than vault amount but within tolerance
-        let tx = make_vault_tx(vec![
-            TxOut::new(Amount::from_sat(999_000), expected_script),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(Amount::from_sat(999_000), expected_script)]);
 
         let trigger = VaultTriggerInfo {
             target_output_index: 0,
@@ -495,8 +522,13 @@ mod tests {
 
         // With 2000 sat fee tolerance, this should pass
         assert!(verify_vault_trigger(
-            &tx, &trigger, vault_amount, spend_delay, Amount::from_sat(2_000),
-        ).is_ok());
+            &tx,
+            &trigger,
+            vault_amount,
+            spend_delay,
+            Amount::from_sat(2_000),
+        )
+        .is_ok());
     }
 
     #[test]
@@ -504,26 +536,23 @@ mod tests {
         let vault_amount = Amount::from_sat(1_000_000);
 
         // Wrong script in the output
-        let tx = make_vault_tx(vec![
-            TxOut::new(vault_amount, Script::from_bytes(vec![0x51])),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(
+            vault_amount,
+            Script::from_bytes(vec![0x51]),
+        )]);
 
         let trigger = VaultTriggerInfo {
             target_output_index: 0,
             leaf_update_script_body: vec![0xac],
         };
 
-        let result = verify_vault_trigger(
-            &tx, &trigger, vault_amount, 10, Amount::from_sat(0),
-        );
+        let result = verify_vault_trigger(&tx, &trigger, vault_amount, 10, Amount::from_sat(0));
         assert!(matches!(result, Err(VaultError::TriggerScriptMismatch)));
     }
 
     #[test]
     fn test_verify_vault_trigger_invalid_index() {
-        let tx = make_vault_tx(vec![
-            TxOut::new(Amount::from_sat(100_000), Script::new()),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(Amount::from_sat(100_000), Script::new())]);
 
         let trigger = VaultTriggerInfo {
             target_output_index: 5, // out of bounds
@@ -531,7 +560,11 @@ mod tests {
         };
 
         let result = verify_vault_trigger(
-            &tx, &trigger, Amount::from_sat(100_000), 10, Amount::from_sat(0),
+            &tx,
+            &trigger,
+            Amount::from_sat(100_000),
+            10,
+            Amount::from_sat(0),
         );
         assert!(matches!(result, Err(VaultError::InvalidTargetIndex { .. })));
     }
@@ -540,19 +573,19 @@ mod tests {
 
     #[test]
     fn test_verify_vault_recover_valid() {
-        let recovery_spk = Script::from_bytes(vec![0x00, 0x14,
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
-            0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14]);
+        let recovery_spk = Script::from_bytes(vec![
+            0x00, 0x14, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+            0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+        ]);
         let recovery_hash = VaultParams::hash_recovery_spk(&recovery_spk);
         let vault_amount = Amount::from_sat(1_000_000);
 
-        let tx = make_vault_tx(vec![
-            TxOut::new(vault_amount, recovery_spk),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(vault_amount, recovery_spk)]);
 
-        assert!(verify_vault_recover(
-            &tx, 0, &recovery_hash, vault_amount, Amount::from_sat(0),
-        ).is_ok());
+        assert!(
+            verify_vault_recover(&tx, 0, &recovery_hash, vault_amount, Amount::from_sat(0),)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -570,12 +603,14 @@ mod tests {
             v.extend_from_slice(&[0xcd; 20]);
             v
         });
-        let tx = make_vault_tx(vec![
-            TxOut::new(Amount::from_sat(1_000_000), wrong_spk),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(Amount::from_sat(1_000_000), wrong_spk)]);
 
         let result = verify_vault_recover(
-            &tx, 0, &recovery_hash, Amount::from_sat(1_000_000), Amount::from_sat(0),
+            &tx,
+            0,
+            &recovery_hash,
+            Amount::from_sat(1_000_000),
+            Amount::from_sat(0),
         );
         assert!(matches!(result, Err(VaultError::RecoveryScriptMismatch)));
     }
@@ -585,14 +620,19 @@ mod tests {
         let recovery_spk = Script::from_bytes(vec![0x51]);
         let recovery_hash = VaultParams::hash_recovery_spk(&recovery_spk);
 
-        let tx = make_vault_tx(vec![
-            TxOut::new(Amount::from_sat(500_000), recovery_spk),
-        ]);
+        let tx = make_vault_tx(vec![TxOut::new(Amount::from_sat(500_000), recovery_spk)]);
 
         let result = verify_vault_recover(
-            &tx, 0, &recovery_hash, Amount::from_sat(1_000_000), Amount::from_sat(0),
+            &tx,
+            0,
+            &recovery_hash,
+            Amount::from_sat(1_000_000),
+            Amount::from_sat(0),
         );
-        assert!(matches!(result, Err(VaultError::InsufficientRecoveryAmount { .. })));
+        assert!(matches!(
+            result,
+            Err(VaultError::InsufficientRecoveryAmount { .. })
+        ));
     }
 
     // ── Script construction ────────────────────────────────────────
@@ -626,8 +666,14 @@ mod tests {
         let (vault_leaf, recovery_leaf) = build_vault_taproot_leaves(&hash, 288);
 
         // Both should reference the same recovery hash
-        assert!(vault_leaf.as_bytes().windows(32).any(|w| w == hash.as_bytes()));
-        assert!(recovery_leaf.as_bytes().windows(32).any(|w| w == hash.as_bytes()));
+        assert!(vault_leaf
+            .as_bytes()
+            .windows(32)
+            .any(|w| w == hash.as_bytes()));
+        assert!(recovery_leaf
+            .as_bytes()
+            .windows(32)
+            .any(|w| w == hash.as_bytes()));
 
         // Vault leaf ends with OP_VAULT, recovery with OP_VAULT_RECOVER
         assert_eq!(*vault_leaf.as_bytes().last().unwrap(), 0xbb);
@@ -682,7 +728,10 @@ mod tests {
 
     #[test]
     fn test_vault_error_display() {
-        let err = VaultError::InvalidTargetIndex { index: 5, num_outputs: 2 };
+        let err = VaultError::InvalidTargetIndex {
+            index: 5,
+            num_outputs: 2,
+        };
         let msg = format!("{}", err);
         assert!(msg.contains("5"));
         assert!(msg.contains("2"));

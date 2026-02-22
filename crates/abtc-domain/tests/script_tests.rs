@@ -9,9 +9,7 @@
 //! - flags is comma-separated: P2SH,WITNESS,DERSIG,CHECKLOCKTIMEVERIFY,...
 //! - expected_result is "OK" or the expected error variant name
 
-use abtc_domain::script::{
-    Script, ScriptFlags, NoSigChecker, verify_script, ScriptError,
-};
+use abtc_domain::script::{verify_script, NoSigChecker, Script, ScriptError, ScriptFlags};
 
 /// Parse an opcode name like "OP_1" or "OP_ADD" to its byte value.
 fn opcode_from_name(name: &str) -> Option<u8> {
@@ -197,8 +195,8 @@ fn parse_flags(flags_str: &str) -> ScriptFlags {
             "CHECKSEQUENCEVERIFY" => flags |= ScriptFlags::VERIFY_CHECKSEQUENCEVERIFY,
             "NULLDUMMY" => flags |= ScriptFlags::VERIFY_NULLDUMMY,
             "MINIMALDATA" => flags |= ScriptFlags::VERIFY_MINIMALDATA,
-            "CLEANSTACK" => {}, // Not a separate flag, implied by evaluation
-            "NONE" | "" => {},
+            "CLEANSTACK" => {} // Not a separate flag, implied by evaluation
+            "NONE" | "" => {}
             f => panic!("Unknown flag: {}", f),
         }
     }
@@ -247,8 +245,8 @@ fn matches_expected_error(err: &ScriptError, expected: &str) -> bool {
 #[test]
 fn test_script_vectors() {
     let json_data = include_str!("data/script_tests.json");
-    let tests: serde_json::Value = serde_json::from_str(json_data)
-        .expect("Failed to parse script_tests.json");
+    let tests: serde_json::Value =
+        serde_json::from_str(json_data).expect("Failed to parse script_tests.json");
 
     let tests = tests.as_array().expect("Top-level should be an array");
 
@@ -269,7 +267,12 @@ fn test_script_vectors() {
         }
 
         // Skip if first element is a comment string
-        if arr.len() == 5 && arr[0].as_str() == Some("") && arr[1].as_str().map_or(false, |s| !s.starts_with("OP_") && !s.starts_with("0x")) {
+        if arr.len() == 5
+            && arr[0].as_str() == Some("")
+            && arr[1]
+                .as_str()
+                .map_or(false, |s| !s.starts_with("OP_") && !s.starts_with("0x"))
+        {
             // This is a section header comment
             skipped += 1;
             continue;
@@ -279,7 +282,11 @@ fn test_script_vectors() {
         let script_pubkey_str = arr[1].as_str().unwrap_or("");
         let flags_str = arr[2].as_str().unwrap_or("");
         let expected = arr[3].as_str().unwrap_or("OK");
-        let comment = if arr.len() > 4 { arr[4].as_str().unwrap_or("") } else { "" };
+        let comment = if arr.len() > 4 {
+            arr[4].as_str().unwrap_or("")
+        } else {
+            ""
+        };
 
         // Skip section header comments
         if script_sig_str.is_empty()
@@ -348,8 +355,8 @@ fn test_script_vectors() {
 /// Additional targeted tests for edge cases not easily expressed in JSON
 #[cfg(test)]
 mod targeted_tests {
-    use abtc_domain::script::*;
     use abtc_domain::crypto::hashing;
+    use abtc_domain::script::*;
 
     #[test]
     fn test_sha1_known_vector() {
@@ -358,9 +365,26 @@ mod targeted_tests {
         let script_pubkey = Script::from_bytes(vec![
             Opcodes::OP_SHA1 as u8,
             0x14, // push 20 bytes
-            0xda, 0x39, 0xa3, 0xee, 0x5e, 0x6b, 0x4b, 0x0d,
-            0x32, 0x55, 0xbf, 0xef, 0x95, 0x60, 0x18, 0x90,
-            0xaf, 0xd8, 0x07, 0x09,
+            0xda,
+            0x39,
+            0xa3,
+            0xee,
+            0x5e,
+            0x6b,
+            0x4b,
+            0x0d,
+            0x32,
+            0x55,
+            0xbf,
+            0xef,
+            0x95,
+            0x60,
+            0x18,
+            0x90,
+            0xaf,
+            0xd8,
+            0x07,
+            0x09,
             Opcodes::OP_EQUAL as u8,
         ]);
 
@@ -434,9 +458,8 @@ mod targeted_tests {
     fn test_ripemd160_known_vector() {
         // RIPEMD160("") = 9c1185a5c5e9fc54612808977ee8f548b2258d31
         let ripemd_empty: [u8; 20] = [
-            0x9c, 0x11, 0x85, 0xa5, 0xc5, 0xe9, 0xfc, 0x54,
-            0x61, 0x28, 0x08, 0x97, 0x7e, 0xe8, 0xf5, 0x48,
-            0xb2, 0x25, 0x8d, 0x31,
+            0x9c, 0x11, 0x85, 0xa5, 0xc5, 0xe9, 0xfc, 0x54, 0x61, 0x28, 0x08, 0x97, 0x7e, 0xe8,
+            0xf5, 0x48, 0xb2, 0x25, 0x8d, 0x31,
         ];
         let script_sig = Script::from_bytes(vec![0x00]); // push empty
         let mut pubkey_bytes = vec![Opcodes::OP_RIPEMD160 as u8, 0x14];
@@ -450,7 +473,11 @@ mod targeted_tests {
             ScriptFlags::new(ScriptFlags::NONE),
             &NoSigChecker,
         );
-        assert!(result.is_ok(), "RIPEMD160 known vector failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "RIPEMD160 known vector failed: {:?}",
+            result
+        );
     }
 
     #[test]

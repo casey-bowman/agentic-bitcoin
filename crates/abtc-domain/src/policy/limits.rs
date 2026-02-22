@@ -61,40 +61,19 @@ impl Default for MempoolLimits {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LimitError {
     /// Too many ancestors
-    TooManyAncestors {
-        count: u32,
-        limit: u32,
-    },
+    TooManyAncestors { count: u32, limit: u32 },
     /// Too many descendants
-    TooManyDescendants {
-        count: u32,
-        limit: u32,
-    },
+    TooManyDescendants { count: u32, limit: u32 },
     /// Ancestor package too large
-    AncestorSizeTooLarge {
-        size: u32,
-        limit: u32,
-    },
+    AncestorSizeTooLarge { size: u32, limit: u32 },
     /// Descendant package too large
-    DescendantSizeTooLarge {
-        size: u32,
-        limit: u32,
-    },
+    DescendantSizeTooLarge { size: u32, limit: u32 },
     /// Transaction output is dust
-    DustOutput {
-        index: usize,
-        value: i64,
-    },
+    DustOutput { index: usize, value: i64 },
     /// Transaction exceeds maximum weight
-    OversizedTransaction {
-        weight: u32,
-        max: u32,
-    },
+    OversizedTransaction { weight: u32, max: u32 },
     /// Fee rate below minimum relay fee
-    BelowMinRelayFee {
-        fee_rate: f64,
-        min_rate: f64,
-    },
+    BelowMinRelayFee { fee_rate: f64, min_rate: f64 },
 }
 
 impl std::fmt::Display for LimitError {
@@ -107,19 +86,35 @@ impl std::fmt::Display for LimitError {
                 write!(f, "too many descendants: {} (limit {})", count, limit)
             }
             LimitError::AncestorSizeTooLarge { size, limit } => {
-                write!(f, "ancestor package too large: {} vB (limit {} vB)", size, limit)
+                write!(
+                    f,
+                    "ancestor package too large: {} vB (limit {} vB)",
+                    size, limit
+                )
             }
             LimitError::DescendantSizeTooLarge { size, limit } => {
-                write!(f, "descendant package too large: {} vB (limit {} vB)", size, limit)
+                write!(
+                    f,
+                    "descendant package too large: {} vB (limit {} vB)",
+                    size, limit
+                )
             }
             LimitError::DustOutput { index, value } => {
-                write!(f, "output {} is dust ({} sat < {} sat)", index, value, DUST_THRESHOLD)
+                write!(
+                    f,
+                    "output {} is dust ({} sat < {} sat)",
+                    index, value, DUST_THRESHOLD
+                )
             }
             LimitError::OversizedTransaction { weight, max } => {
                 write!(f, "transaction too large: {} weight (max {})", weight, max)
             }
             LimitError::BelowMinRelayFee { fee_rate, min_rate } => {
-                write!(f, "fee rate too low: {:.2} sat/vB (min {:.2})", fee_rate, min_rate)
+                write!(
+                    f,
+                    "fee rate too low: {:.2} sat/vB (min {:.2})",
+                    fee_rate, min_rate
+                )
             }
         }
     }
@@ -279,10 +274,7 @@ impl MempoolLimits {
         // Check dust outputs
         for (i, &value) in output_values.iter().enumerate() {
             if value > 0 && value < DUST_THRESHOLD {
-                return Err(LimitError::DustOutput {
-                    index: i,
-                    value,
-                });
+                return Err(LimitError::DustOutput { index: i, value });
             }
         }
 
@@ -313,14 +305,23 @@ mod tests {
     fn test_ancestor_count_exceeded() {
         let limits = MempoolLimits::default();
         let result = limits.check_ancestor_limits(26, 5000);
-        assert!(matches!(result, Err(LimitError::TooManyAncestors { count: 26, limit: 25 })));
+        assert!(matches!(
+            result,
+            Err(LimitError::TooManyAncestors {
+                count: 26,
+                limit: 25
+            })
+        ));
     }
 
     #[test]
     fn test_ancestor_size_exceeded() {
         let limits = MempoolLimits::default();
         let result = limits.check_ancestor_limits(5, 102_000);
-        assert!(matches!(result, Err(LimitError::AncestorSizeTooLarge { .. })));
+        assert!(matches!(
+            result,
+            Err(LimitError::AncestorSizeTooLarge { .. })
+        ));
     }
 
     #[test]
@@ -334,7 +335,10 @@ mod tests {
     fn test_descendant_size_exceeded() {
         let limits = MempoolLimits::default();
         let result = limits.check_descendant_limits(5, 102_000);
-        assert!(matches!(result, Err(LimitError::DescendantSizeTooLarge { .. })));
+        assert!(matches!(
+            result,
+            Err(LimitError::DescendantSizeTooLarge { .. })
+        ));
     }
 
     #[test]
@@ -359,11 +363,7 @@ mod tests {
     #[test]
     fn test_cpfp_scenario() {
         // Parent: low fee rate (1 sat/vB)
-        let parent = PackageInfo::new(
-            Txid::zero(),
-            200,
-            Amount::from_sat(200),
-        );
+        let parent = PackageInfo::new(Txid::zero(), 200, Amount::from_sat(200));
         assert!((parent.fee_rate() - 1.0).abs() < 0.01);
 
         // Child: high fee rate, ancestor fee rate pulls parent along
@@ -372,7 +372,7 @@ mod tests {
             vsize: 150,
             fee: Amount::from_sat(3000),
             ancestor_count: 2,
-            ancestor_size: 350, // 200 + 150
+            ancestor_size: 350,                   // 200 + 150
             ancestor_fee: Amount::from_sat(3200), // 200 + 3000
             descendant_count: 1,
             descendant_size: 150,
@@ -389,12 +389,8 @@ mod tests {
 
     #[test]
     fn test_standard_tx_ok() {
-        let result = MempoolLimits::check_standard_tx(
-            1000,
-            Amount::from_sat(500),
-            250,
-            &[50_000, 100_000],
-        );
+        let result =
+            MempoolLimits::check_standard_tx(1000, Amount::from_sat(500), 250, &[50_000, 100_000]);
         assert!(result.is_ok());
     }
 
@@ -406,7 +402,10 @@ mod tests {
             125_000,
             &[50_000],
         );
-        assert!(matches!(result, Err(LimitError::OversizedTransaction { .. })));
+        assert!(matches!(
+            result,
+            Err(LimitError::OversizedTransaction { .. })
+        ));
     }
 
     #[test]
@@ -417,7 +416,13 @@ mod tests {
             250,
             &[50_000, 100], // 100 sat is dust
         );
-        assert!(matches!(result, Err(LimitError::DustOutput { index: 1, value: 100 })));
+        assert!(matches!(
+            result,
+            Err(LimitError::DustOutput {
+                index: 1,
+                value: 100
+            })
+        ));
     }
 
     #[test]

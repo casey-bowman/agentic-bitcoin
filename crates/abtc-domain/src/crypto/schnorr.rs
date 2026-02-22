@@ -10,7 +10,7 @@
 //! - Simpler, more efficient, and enables signature aggregation
 //! - An optional 1-byte sighash type may be appended (65 bytes total)
 
-use secp256k1::{Secp256k1, SecretKey, XOnlyPublicKey, Keypair};
+use secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 
 /// Sign a 32-byte message hash with a secret key using BIP340 Schnorr.
 ///
@@ -23,8 +23,8 @@ use secp256k1::{Secp256k1, SecretKey, XOnlyPublicKey, Keypair};
 pub fn sign_schnorr(secret_key: &SecretKey, msg: &[u8; 32]) -> [u8; 64] {
     let secp = Secp256k1::new();
     let keypair = Keypair::from_secret_key(&secp, secret_key);
-    let message = secp256k1::Message::from_digest_slice(msg)
-        .expect("32 bytes is always valid for Message");
+    let message =
+        secp256k1::Message::from_digest_slice(msg).expect("32 bytes is always valid for Message");
     let sig = secp.sign_schnorr(&message, &keypair);
     *sig.as_ref()
 }
@@ -54,20 +54,17 @@ pub fn sign_schnorr_tweaked(
     let (internal_xonly, _parity) = XOnlyPublicKey::from_keypair(&keypair);
 
     // Compute the tweak: t = tagged_hash("TapTweak", internal_key [|| merkle_root])
-    let tweak_hash = super::taproot::taptweak_hash(
-        &internal_xonly.serialize(),
-        merkle_root,
-    );
-    let tweak_scalar = Scalar::from_be_bytes(tweak_hash)
-        .expect("taptweak hash is valid scalar");
+    let tweak_hash = super::taproot::taptweak_hash(&internal_xonly.serialize(), merkle_root);
+    let tweak_scalar = Scalar::from_be_bytes(tweak_hash).expect("taptweak hash is valid scalar");
 
     // Tweak the keypair: tweaked_key = internal_key + t
-    let tweaked_keypair = keypair.add_xonly_tweak(&secp, &tweak_scalar)
+    let tweaked_keypair = keypair
+        .add_xonly_tweak(&secp, &tweak_scalar)
         .expect("tweak must not overflow");
     let (output_xonly, _) = XOnlyPublicKey::from_keypair(&tweaked_keypair);
 
-    let message = secp256k1::Message::from_digest_slice(msg)
-        .expect("32 bytes is always valid for Message");
+    let message =
+        secp256k1::Message::from_digest_slice(msg).expect("32 bytes is always valid for Message");
     let sig = secp.sign_schnorr(&message, &tweaked_keypair);
 
     (*sig.as_ref(), output_xonly.serialize())

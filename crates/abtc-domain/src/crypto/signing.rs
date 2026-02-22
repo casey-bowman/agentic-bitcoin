@@ -23,7 +23,7 @@
 //! spent output.
 
 use crate::crypto::hashing;
-use crate::primitives::{Transaction, Amount};
+use crate::primitives::{Amount, Transaction};
 use crate::script::interpreter::SignatureChecker;
 use crate::script::script::Script;
 
@@ -411,7 +411,11 @@ impl<'a> TransactionSignatureChecker<'a> {
     /// 8. hashOutputs (32 bytes)
     /// 9. nLockTime (4 bytes LE)
     /// 10. sighash type (4 bytes LE)
-    pub(crate) fn compute_sighash_witness_v0(&self, script_code: &Script, hash_type: u8) -> [u8; 32] {
+    pub(crate) fn compute_sighash_witness_v0(
+        &self,
+        script_code: &Script,
+        hash_type: u8,
+    ) -> [u8; 32] {
         let base_type = hash_type & 0x1f;
         let anyone_can_pay = hash_type & sighash_type::SIGHASH_ANYONECANPAY != 0;
 
@@ -550,12 +554,7 @@ fn push_varint(buf: &mut Vec<u8>, value: u64) {
 }
 
 impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
-    fn check_sig(
-        &self,
-        sig: &[u8],
-        pubkey: &[u8],
-        script_code: &Script,
-    ) -> bool {
+    fn check_sig(&self, sig: &[u8], pubkey: &[u8], script_code: &Script) -> bool {
         if sig.is_empty() || pubkey.is_empty() {
             return false;
         }
@@ -637,7 +636,13 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
         super::schnorr::verify_schnorr(pubkey, &sighash, sig)
     }
 
-    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32], hash_type: u8) -> bool {
+    fn check_tapscript_sig(
+        &self,
+        sig: &[u8],
+        pubkey: &[u8],
+        leaf_hash: &[u8; 32],
+        hash_type: u8,
+    ) -> bool {
         if sig.len() != 64 || pubkey.len() != 32 {
             return false;
         }
@@ -676,11 +681,7 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
         .is_ok()
     }
 
-    fn check_vault_recover(
-        &self,
-        target_output_index: u32,
-        recovery_spk_hash: &[u8; 32],
-    ) -> bool {
+    fn check_vault_recover(&self, target_output_index: u32, recovery_spk_hash: &[u8; 32]) -> bool {
         use crate::covenants::vault::verify_vault_recover;
         use crate::primitives::Hash256;
 
@@ -701,8 +702,8 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
 ///
 /// Returns true if the signature is valid for the given message hash and public key.
 pub fn verify_ecdsa(msg_hash: &[u8; 32], der_sig: &[u8], pubkey_bytes: &[u8]) -> bool {
-    use secp256k1::{Message, PublicKey, Secp256k1};
     use secp256k1::ecdsa::Signature;
+    use secp256k1::{Message, PublicKey, Secp256k1};
 
     let secp = Secp256k1::verification_only();
 
@@ -774,11 +775,8 @@ mod tests {
             500_000,
         );
 
-        let checker = TransactionSignatureChecker::new_witness_v0(
-            &tx,
-            0,
-            Amount::from_sat(600_000),
-        );
+        let checker =
+            TransactionSignatureChecker::new_witness_v0(&tx, 0, Amount::from_sat(600_000));
         assert!(checker.witness_v0);
     }
 
@@ -800,25 +798,18 @@ mod tests {
         );
 
         let script_code = Script::from_bytes(vec![
-            0x76, 0xa9, 0x14,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x88, 0xac,
+            0x76, 0xa9, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x88, 0xac,
         ]);
 
-        let legacy_checker = TransactionSignatureChecker::new(
-            &tx, 0, Amount::from_sat(100_000),
-        );
-        let witness_checker = TransactionSignatureChecker::new_witness_v0(
-            &tx, 0, Amount::from_sat(100_000),
-        );
+        let legacy_checker = TransactionSignatureChecker::new(&tx, 0, Amount::from_sat(100_000));
+        let witness_checker =
+            TransactionSignatureChecker::new_witness_v0(&tx, 0, Amount::from_sat(100_000));
 
-        let legacy_hash = legacy_checker.compute_sighash_legacy(
-            &script_code, sighash_type::SIGHASH_ALL,
-        );
-        let witness_hash = witness_checker.compute_sighash_witness_v0(
-            &script_code, sighash_type::SIGHASH_ALL,
-        );
+        let legacy_hash =
+            legacy_checker.compute_sighash_legacy(&script_code, sighash_type::SIGHASH_ALL);
+        let witness_hash =
+            witness_checker.compute_sighash_witness_v0(&script_code, sighash_type::SIGHASH_ALL);
 
         // They must be different — BIP143 includes the amount, legacy doesn't
         assert_ne!(legacy_hash, witness_hash);
@@ -841,7 +832,7 @@ mod tests {
         //
         // A compact signature is 64 bytes (r || s). DER encoding requires ~72 bytes.
         // We ensure that a valid compact signature is rejected.
-        use secp256k1::{Secp256k1, SecretKey, Message};
+        use secp256k1::{Message, Secp256k1, SecretKey};
 
         let secp = Secp256k1::new();
         let sk = SecretKey::from_slice(&[0xcd; 32]).unwrap();
@@ -852,13 +843,17 @@ mod tests {
 
         // DER-encoded signature should verify.
         let der_bytes = sig.serialize_der();
-        assert!(verify_ecdsa(&msg_hash, &der_bytes, &pk.serialize()),
-            "valid DER signature should verify");
+        assert!(
+            verify_ecdsa(&msg_hash, &der_bytes, &pk.serialize()),
+            "valid DER signature should verify"
+        );
 
         // Compact-encoded (64 bytes) should NOT verify — this is the regression test.
         let compact_bytes = sig.serialize_compact();
-        assert!(!verify_ecdsa(&msg_hash, &compact_bytes, &pk.serialize()),
-            "compact signature must be rejected (strict DER per BIP66)");
+        assert!(
+            !verify_ecdsa(&msg_hash, &compact_bytes, &pk.serialize()),
+            "compact signature must be rejected (strict DER per BIP66)"
+        );
     }
 
     #[test]
@@ -884,8 +879,10 @@ mod tests {
         let checker = TransactionSignatureChecker::new(&tx, 0, Amount::from_sat(100_000));
         // spent_outputs is None, so taproot sighash should return sentinel.
         let sighash = checker.compute_taproot_sighash(0x00);
-        assert_eq!(sighash, [0xff; 32],
-            "taproot sighash without spent_outputs must return sentinel");
+        assert_eq!(
+            sighash, [0xff; 32],
+            "taproot sighash without spent_outputs must return sentinel"
+        );
     }
 
     #[test]
@@ -906,8 +903,10 @@ mod tests {
         let checker = TransactionSignatureChecker::new(&tx, 0, Amount::from_sat(100_000));
         let leaf_hash = [0xab; 32];
         let sighash = checker.compute_taproot_sighash_script_path(&leaf_hash, 0x00);
-        assert_eq!(sighash, [0xff; 32],
-            "taproot script-path sighash without spent_outputs must return sentinel");
+        assert_eq!(
+            sighash, [0xff; 32],
+            "taproot script-path sighash without spent_outputs must return sentinel"
+        );
     }
 
     #[test]
@@ -932,10 +931,14 @@ mod tests {
         }];
         let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
         let sighash = checker.compute_taproot_sighash(0x00);
-        assert_ne!(sighash, [0xff; 32],
-            "taproot sighash with spent_outputs should produce a real hash");
-        assert_ne!(sighash, [0x00; 32],
-            "taproot sighash should not be all zeros");
+        assert_ne!(
+            sighash, [0xff; 32],
+            "taproot sighash with spent_outputs should produce a real hash"
+        );
+        assert_ne!(
+            sighash, [0x00; 32],
+            "taproot sighash should not be all zeros"
+        );
     }
 
     #[test]
@@ -962,7 +965,9 @@ mod tests {
 
         let sighash_default = checker.compute_taproot_sighash(0x00);
         let sighash_all = checker.compute_taproot_sighash(0x01);
-        assert_ne!(sighash_default, sighash_all,
-            "SIGHASH_DEFAULT and SIGHASH_ALL should produce different hashes");
+        assert_ne!(
+            sighash_default, sighash_all,
+            "SIGHASH_DEFAULT and SIGHASH_ALL should produce different hashes"
+        );
     }
 }

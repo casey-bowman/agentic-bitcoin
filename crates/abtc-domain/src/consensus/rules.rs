@@ -513,7 +513,7 @@ pub fn hash_meets_target(hash: &[u8; 32], target: &[u8; 32]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::primitives::{OutPoint, TxIn, TxOut, Txid, Amount};
+    use crate::primitives::{Amount, OutPoint, TxIn, TxOut, Txid};
     use crate::Script;
 
     #[test]
@@ -590,7 +590,10 @@ mod tests {
         let ts = params.pow_target_timespan;
         let new_bits = calculate_next_work(prev_bits, 1_000_000, 1_000_000 + ts / 2, &params);
         // new_bits should encode a smaller target.
-        assert!(compact_gt(prev_bits, new_bits), "difficulty should increase (target decrease)");
+        assert!(
+            compact_gt(prev_bits, new_bits),
+            "difficulty should increase (target decrease)"
+        );
         assert_ne!(new_bits, prev_bits);
     }
 
@@ -601,7 +604,10 @@ mod tests {
         let prev_bits = 0x1b0404cb;
         let ts = params.pow_target_timespan;
         let new_bits = calculate_next_work(prev_bits, 1_000_000, 1_000_000 + ts * 2, &params);
-        assert!(compact_gt(new_bits, prev_bits), "difficulty should decrease (target increase)");
+        assert!(
+            compact_gt(new_bits, prev_bits),
+            "difficulty should decrease (target increase)"
+        );
     }
 
     #[test]
@@ -678,7 +684,8 @@ mod tests {
         let params = ConsensusParams::mainnet();
         let prev_bits = 0x1b0404cb;
         let ts = params.pow_target_timespan;
-        let bits = get_next_work_required(2016, 1_000_000 + ts, prev_bits, Some(1_000_000), &params);
+        let bits =
+            get_next_work_required(2016, 1_000_000 + ts, prev_bits, Some(1_000_000), &params);
         assert_eq!(bits, prev_bits);
     }
 
@@ -757,7 +764,10 @@ mod tests {
         hash[31] = 0x01; // hash = 1 << 248
         let mut target = [0x00u8; 32];
         target[31] = 0x02; // target = 2 << 248
-        assert!(hash_meets_target(&hash, &target), "smaller hash should pass");
+        assert!(
+            hash_meets_target(&hash, &target),
+            "smaller hash should pass"
+        );
     }
 
     #[test]
@@ -766,7 +776,10 @@ mod tests {
         hash[31] = 0x03; // hash = 3 << 248
         let mut target = [0x00u8; 32];
         target[31] = 0x02; // target = 2 << 248
-        assert!(!hash_meets_target(&hash, &target), "greater hash should fail");
+        assert!(
+            !hash_meets_target(&hash, &target),
+            "greater hash should fail"
+        );
     }
 
     #[test]
@@ -777,8 +790,10 @@ mod tests {
         let mut hash = [0x00u8; 32];
         hash[16] = 0x01; // non-zero in byte 16 (beyond u128 range)
         let target = [0x00u8; 32]; // target = 0
-        assert!(!hash_meets_target(&hash, &target),
-            "hash with non-zero high bytes must fail against zero target");
+        assert!(
+            !hash_meets_target(&hash, &target),
+            "hash with non-zero high bytes must fail against zero target"
+        );
     }
 
     #[test]
@@ -791,9 +806,11 @@ mod tests {
         let mut target = [0x00u8; 32];
         target[15] = 0xff; // makes lower 16 bytes of target large
         target[17] = 0x01; // target[17] < hash[17]
-        // u128 view: hash_u128 = 0, target_u128 = 0xff << 120 → hash < target → PASS
-        // 256-bit:   bytes 31..18 equal. Byte 17: hash=0x02 > target=0x01 → REJECT
-        assert!(!hash_meets_target(&hash, &target),
-            "256-bit comparison should catch high-byte violation that u128 misses");
+                           // u128 view: hash_u128 = 0, target_u128 = 0xff << 120 → hash < target → PASS
+                           // 256-bit:   bytes 31..18 equal. Byte 17: hash=0x02 > target=0x01 → REJECT
+        assert!(
+            !hash_meets_target(&hash, &target),
+            "256-bit comparison should catch high-byte violation that u128 misses"
+        );
     }
 }

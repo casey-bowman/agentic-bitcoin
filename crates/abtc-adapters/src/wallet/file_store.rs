@@ -4,8 +4,8 @@
 //! (temp file + rename) to prevent corruption. File permissions are set
 //! to 0o600 (owner read/write only) to protect private keys.
 
-use async_trait::async_trait;
 use abtc_ports::wallet::store::{WalletKeyEntry, WalletSnapshot, WalletStore, WalletUtxoEntry};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -128,7 +128,10 @@ impl FileBasedWalletStore {
 
 #[async_trait]
 impl WalletStore for FileBasedWalletStore {
-    async fn save(&self, snapshot: &WalletSnapshot) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn save(
+        &self,
+        snapshot: &WalletSnapshot,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let data = Self::to_file_data(snapshot);
         let json = serde_json::to_string_pretty(&data)
             .map_err(|e| format!("JSON serialization failed: {}", e))?;
@@ -136,14 +139,16 @@ impl WalletStore for FileBasedWalletStore {
         // Ensure parent directory exists
         if let Some(parent) = self.path.parent() {
             if !parent.exists() {
-                tokio::fs::create_dir_all(parent).await
-                    .map_err(|e| format!("failed to create directory {}: {}", parent.display(), e))?;
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    format!("failed to create directory {}: {}", parent.display(), e)
+                })?;
             }
         }
 
         // Atomic write: write to temp file, then rename
         let temp_path = self.path.with_extension("tmp");
-        tokio::fs::write(&temp_path, json.as_bytes()).await
+        tokio::fs::write(&temp_path, json.as_bytes())
+            .await
             .map_err(|e| format!("failed to write temp file {}: {}", temp_path.display(), e))?;
 
         // Set restrictive permissions (Unix only) — 0o600 = owner read/write
@@ -151,25 +156,37 @@ impl WalletStore for FileBasedWalletStore {
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
-            tokio::fs::set_permissions(&temp_path, perms).await
+            tokio::fs::set_permissions(&temp_path, perms)
+                .await
                 .map_err(|e| format!("failed to set permissions: {}", e))?;
         }
 
         // Atomic rename
-        tokio::fs::rename(&temp_path, &self.path).await
-            .map_err(|e| format!("failed to rename {} → {}: {}", temp_path.display(), self.path.display(), e))?;
+        tokio::fs::rename(&temp_path, &self.path)
+            .await
+            .map_err(|e| {
+                format!(
+                    "failed to rename {} → {}: {}",
+                    temp_path.display(),
+                    self.path.display(),
+                    e
+                )
+            })?;
 
         tracing::debug!("Wallet state saved to {}", self.path.display());
         Ok(())
     }
 
-    async fn load(&self) -> Result<Option<WalletSnapshot>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn load(
+        &self,
+    ) -> Result<Option<WalletSnapshot>, Box<dyn std::error::Error + Send + Sync>> {
         // Missing file is not an error — it means first run
         if !self.path.exists() {
             return Ok(None);
         }
 
-        let contents = tokio::fs::read_to_string(&self.path).await
+        let contents = tokio::fs::read_to_string(&self.path)
+            .await
             .map_err(|e| format!("failed to read wallet file {}: {}", self.path.display(), e))?;
 
         let data: WalletFileData = serde_json::from_str(&contents)
@@ -190,8 +207,13 @@ impl WalletStore for FileBasedWalletStore {
 
     async fn delete(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.path.exists() {
-            tokio::fs::remove_file(&self.path).await
-                .map_err(|e| format!("failed to delete wallet file {}: {}", self.path.display(), e))?;
+            tokio::fs::remove_file(&self.path).await.map_err(|e| {
+                format!(
+                    "failed to delete wallet file {}: {}",
+                    self.path.display(),
+                    e
+                )
+            })?;
             tracing::debug!("Wallet file deleted: {}", self.path.display());
         }
         Ok(())
@@ -239,7 +261,8 @@ mod tests {
                 },
             ],
             utxos: vec![WalletUtxoEntry {
-                txid_hex: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".to_string(),
+                txid_hex: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+                    .to_string(),
                 vout: 0,
                 amount_sat: 100_000,
                 script_pubkey_hex: "0014abcdef1234567890abcdef1234567890abcdef12".to_string(),

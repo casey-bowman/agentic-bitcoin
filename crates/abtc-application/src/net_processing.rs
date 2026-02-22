@@ -15,11 +15,11 @@
 
 use crate::block_index::{BlockIndex, BlockValidationStatus};
 use crate::orphan_pool::OrphanPool;
-use crate::peer_scoring::{PeerScoring, Misbehavior, ScoreAction};
+use crate::peer_scoring::{Misbehavior, PeerScoring, ScoreAction};
 use abtc_domain::primitives::{Block, BlockHash, BlockHeader, Transaction};
 use abtc_ports::{
-    BlockStore, ChainStateStore, InventoryItem, MempoolPort, NetworkMessage, PeerEvent,
-    PeerInfo, PeerManager,
+    BlockStore, ChainStateStore, InventoryItem, MempoolPort, NetworkMessage, PeerEvent, PeerInfo,
+    PeerManager,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
@@ -200,12 +200,15 @@ impl SyncManager {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
-                let action = self.peer_scoring.record_misbehavior(
+                let action =
+                    self.peer_scoring
+                        .record_misbehavior(peer_id, Misbehavior::Custom(score), now);
+                if let ScoreAction::Ban {
                     peer_id,
-                    Misbehavior::Custom(score),
-                    now,
-                );
-                if let ScoreAction::Ban { peer_id, addr, reason } = action {
+                    addr,
+                    reason,
+                } = action
+                {
                     tracing::warn!("Banning peer {} ({}): {}", peer_id, addr, reason);
                     actions.push(SyncAction::DisconnectPeer(peer_id));
                 }
@@ -321,7 +324,11 @@ impl SyncManager {
                     );
                 }
                 _ => {
-                    tracing::warn!("Unexpected Version from peer {} (state: {:?})", peer_id, state.handshake);
+                    tracing::warn!(
+                        "Unexpected Version from peer {} (state: {:?})",
+                        peer_id,
+                        state.handshake
+                    );
                 }
             }
         }
@@ -350,7 +357,11 @@ impl SyncManager {
                     true
                 }
                 _ => {
-                    tracing::warn!("Unexpected Verack from peer {} (state: {:?})", peer_id, state.handshake);
+                    tracing::warn!(
+                        "Unexpected Verack from peer {} (state: {:?})",
+                        peer_id,
+                        state.handshake
+                    );
                     false
                 }
             }
@@ -398,7 +409,9 @@ impl SyncManager {
             let orphans_removed = self.orphan_tx_pool.remove_for_peer(peer_id);
             tracing::info!(
                 "Peer {} disconnected, {} blocks reassigned, {} orphan txs removed",
-                peer_id, state.blocks_in_flight.len(), orphans_removed,
+                peer_id,
+                state.blocks_in_flight.len(),
+                orphans_removed,
             );
         }
 
@@ -431,7 +444,12 @@ impl SyncManager {
             } => {
                 actions.extend(
                     self.on_version(
-                        peer_id, version, services, user_agent, start_height, relay,
+                        peer_id,
+                        version,
+                        services,
+                        user_agent,
+                        start_height,
+                        relay,
                         peer_manager,
                     )
                     .await?,
@@ -443,19 +461,16 @@ impl SyncManager {
 
             // ── Sync messages ────────────────────────────────────
             NetworkMessage::Headers { headers } => {
-                actions.extend(
-                    self.on_headers(peer_id, headers, peer_manager).await?,
-                );
+                actions.extend(self.on_headers(peer_id, headers, peer_manager).await?);
             }
             NetworkMessage::Block { block } => {
                 actions.extend(
-                    self.on_block(peer_id, block, block_store, peer_manager).await?,
+                    self.on_block(peer_id, block, block_store, peer_manager)
+                        .await?,
                 );
             }
             NetworkMessage::Inv { items } => {
-                actions.extend(
-                    self.on_inv(peer_id, items, peer_manager).await?,
-                );
+                actions.extend(self.on_inv(peer_id, items, peer_manager).await?);
             }
             NetworkMessage::GetHeaders {
                 block_locator,
@@ -463,7 +478,8 @@ impl SyncManager {
                 ..
             } => {
                 actions.extend(
-                    self.on_getheaders(peer_id, block_locator, hash_stop).await?,
+                    self.on_getheaders(peer_id, block_locator, hash_stop)
+                        .await?,
                 );
             }
             NetworkMessage::GetBlocks {
@@ -471,14 +487,10 @@ impl SyncManager {
                 hash_stop,
                 ..
             } => {
-                actions.extend(
-                    self.on_getblocks(peer_id, block_locator, hash_stop).await?,
-                );
+                actions.extend(self.on_getblocks(peer_id, block_locator, hash_stop).await?);
             }
             NetworkMessage::GetData { items } => {
-                actions.extend(
-                    self.on_getdata(peer_id, items, block_store).await?,
-                );
+                actions.extend(self.on_getdata(peer_id, items, block_store).await?);
             }
             NetworkMessage::Ping { nonce } => {
                 actions.push(SyncAction::SendMessage(
@@ -493,7 +505,9 @@ impl SyncManager {
                 if let Err(e) = abtc_domain::consensus::rules::check_transaction(&tx) {
                     tracing::debug!(
                         "Rejected tx {} from peer {}: consensus violation: {}",
-                        txid, peer_id, e,
+                        txid,
+                        peer_id,
+                        e,
                     );
                     // Invalid — don't relay or process.
                     return Ok(actions);
@@ -501,9 +515,7 @@ impl SyncManager {
 
                 // Reject coinbase transactions from the network.
                 if tx.is_coinbase() {
-                    tracing::debug!(
-                        "Rejected coinbase tx {} from peer {}", txid, peer_id
-                    );
+                    tracing::debug!("Rejected coinbase tx {} from peer {}", txid, peer_id);
                     return Ok(actions);
                 }
 
@@ -517,10 +529,7 @@ impl SyncManager {
                 // Attempt to add to the mempool.
                 match mempool.add_transaction(&tx).await {
                     Ok(()) => {
-                        tracing::info!(
-                            "Accepted tx {} from peer {} into mempool",
-                            txid, peer_id,
-                        );
+                        tracing::info!("Accepted tx {} from peer {} into mempool", txid, peer_id,);
                         actions.push(SyncAction::AcceptedTransaction {
                             tx: tx.clone(),
                             from_peer: peer_id,
@@ -528,15 +537,15 @@ impl SyncManager {
 
                         // Check if any orphan transactions were waiting for
                         // outputs from this newly-accepted transaction.
-                        let children = self.orphan_tx_pool.get_children_of(
-                            &txid,
-                            tx.outputs.len() as u32,
-                        );
+                        let children = self
+                            .orphan_tx_pool
+                            .get_children_of(&txid, tx.outputs.len() as u32);
                         for child_txid in children {
                             if let Some(entry) = self.orphan_tx_pool.remove_orphan(&child_txid) {
                                 tracing::debug!(
                                     "Resolving orphan tx {} (parent {} now available)",
-                                    child_txid, txid,
+                                    child_txid,
+                                    txid,
                                 );
                                 // Re-submit the orphan to the mempool
                                 match mempool.add_transaction(&entry.tx).await {
@@ -553,7 +562,8 @@ impl SyncManager {
                                     Err(e) => {
                                         tracing::debug!(
                                             "Orphan tx {} still rejected: {}",
-                                            child_txid, e,
+                                            child_txid,
+                                            e,
                                         );
                                     }
                                 }
@@ -563,26 +573,27 @@ impl SyncManager {
                     Err(e) => {
                         tracing::debug!(
                             "Mempool rejected tx {} from peer {}: {}",
-                            txid, peer_id, e,
+                            txid,
+                            peer_id,
+                            e,
                         );
                         // The mempool rejected this tx — it may be an orphan
                         // (missing parent inputs). Try adding to orphan pool.
-                        let add_result = self.orphan_tx_pool.add_orphan(
-                            tx.clone(),
-                            peer_id,
-                            now,
-                        );
+                        let add_result = self.orphan_tx_pool.add_orphan(tx.clone(), peer_id, now);
                         match add_result {
                             crate::orphan_pool::AddOrphanResult::Added => {
                                 tracing::debug!(
                                     "Added tx {} to orphan pool (from peer {})",
-                                    txid, peer_id,
+                                    txid,
+                                    peer_id,
                                 );
                             }
                             crate::orphan_pool::AddOrphanResult::AddedAfterEviction { evicted } => {
                                 tracing::debug!(
                                     "Added tx {} to orphan pool after evicting {} (from peer {})",
-                                    txid, evicted, peer_id,
+                                    txid,
+                                    evicted,
+                                    peer_id,
                                 );
                             }
                             _ => {
@@ -602,17 +613,16 @@ impl SyncManager {
             }
             NetworkMessage::PackageTx { transactions } => {
                 let tx_count = transactions.len();
-                tracing::info!(
-                    "Received package of {} txs from peer {}",
-                    tx_count, peer_id,
-                );
+                tracing::info!("Received package of {} txs from peer {}", tx_count, peer_id,);
 
                 // Validate package structure at the domain level first
                 match abtc_domain::policy::packages::validate_package(&transactions) {
                     Ok(pkg_type) => {
                         tracing::debug!(
                             "Package from peer {} validated: {:?}, {} txs",
-                            peer_id, pkg_type, tx_count,
+                            peer_id,
+                            pkg_type,
+                            tx_count,
                         );
 
                         // Submit each transaction in topological order to the mempool.
@@ -630,25 +640,21 @@ impl SyncManager {
                                 Err(e) => {
                                     tracing::debug!(
                                         "Package tx {} from peer {} rejected: {}",
-                                        txid, peer_id, e,
+                                        txid,
+                                        peer_id,
+                                        e,
                                     );
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        tracing::debug!(
-                            "Invalid package from peer {}: {}",
-                            peer_id, e,
-                        );
+                        tracing::debug!("Invalid package from peer {}: {}", peer_id, e,);
                     }
                 }
             }
             NetworkMessage::SendPackages { version } => {
-                tracing::info!(
-                    "Peer {} supports package relay v{}",
-                    peer_id, version,
-                );
+                tracing::info!("Peer {} supports package relay v{}", peer_id, version,);
                 // Record that this peer supports package relay.
                 // Feature negotiation tracking can be extended later.
             }
@@ -692,11 +698,7 @@ impl SyncManager {
                         new_headers += 1;
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "Failed to add header from peer {}: {}",
-                            peer_id,
-                            e
-                        );
+                        tracing::warn!("Failed to add header from peer {}: {}", peer_id, e);
                         // Don't abort — continue with remaining headers
                     }
                 }
@@ -717,7 +719,8 @@ impl SyncManager {
 
         // If we received a full batch, request more headers
         if count >= MAX_HEADERS_PER_REQUEST {
-            self.request_headers_from_peer(peer_id, peer_manager).await?;
+            self.request_headers_from_peer(peer_id, peer_manager)
+                .await?;
         } else {
             // Received fewer than max — this peer is caught up
             self.transition_to_block_sync(peer_manager).await?;
@@ -977,36 +980,21 @@ impl SyncManager {
 
         for item in items {
             match item {
-                InventoryItem::Block(hash) => {
-                    match block_store.get_block(&hash).await {
-                        Ok(Some(block)) => {
-                            tracing::debug!(
-                                "Serving block {} to peer {}",
-                                hash,
-                                peer_id,
-                            );
-                            actions.push(SyncAction::SendMessage(
-                                peer_id,
-                                NetworkMessage::Block { block },
-                            ));
-                        }
-                        Ok(None) => {
-                            tracing::debug!(
-                                "Peer {} requested unknown block {}",
-                                peer_id,
-                                hash,
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Error fetching block {} for peer {}: {}",
-                                hash,
-                                peer_id,
-                                e,
-                            );
-                        }
+                InventoryItem::Block(hash) => match block_store.get_block(&hash).await {
+                    Ok(Some(block)) => {
+                        tracing::debug!("Serving block {} to peer {}", hash, peer_id,);
+                        actions.push(SyncAction::SendMessage(
+                            peer_id,
+                            NetworkMessage::Block { block },
+                        ));
                     }
-                }
+                    Ok(None) => {
+                        tracing::debug!("Peer {} requested unknown block {}", peer_id, hash,);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Error fetching block {} for peer {}: {}", hash, peer_id, e,);
+                    }
+                },
                 InventoryItem::Tx(_txid) => {
                     // Transaction serving from mempool is handled by
                     // on_getdata_with_mempool below.
@@ -1041,11 +1029,7 @@ impl SyncManager {
                 }
                 InventoryItem::Tx(txid) => {
                     if let Ok(Some(entry)) = mempool.get_transaction(&txid).await {
-                        tracing::debug!(
-                            "Serving transaction {} to peer {}",
-                            txid,
-                            peer_id,
-                        );
+                        tracing::debug!("Serving transaction {} to peer {}", txid, peer_id,);
                         actions.push(SyncAction::SendMessage(
                             peer_id,
                             NetworkMessage::Tx { tx: entry.tx },
@@ -1133,7 +1117,8 @@ impl SyncManager {
                     continue;
                 }
             }
-            self.known_addresses.insert(*addr, (*timestamp, OUR_SERVICES));
+            self.known_addresses
+                .insert(*addr, (*timestamp, OUR_SERVICES));
             added += 1;
         }
 
@@ -1280,10 +1265,7 @@ impl SyncManager {
             tracing::info!("Already synced — no blocks to download");
         } else {
             self.state = SyncState::BlockSync;
-            tracing::info!(
-                "Transitioning to block sync: {} blocks to download",
-                count
-            );
+            tracing::info!("Transitioning to block sync: {} blocks to download", count);
             self.request_blocks(peer_manager).await?;
         }
 
@@ -1516,7 +1498,7 @@ mod tests {
             SyncAction::SendMessage(peer_id, NetworkMessage::Inv { items }) => {
                 assert_eq!(*peer_id, 1);
                 assert_eq!(items.len(), 5); // blocks 1,2,3,4,5
-                // First item should be block at height 1
+                                            // First item should be block at height 1
                 match &items[0] {
                     InventoryItem::Block(h) => assert_eq!(*h, hashes[1]),
                     _ => panic!("Expected block inv item"),
@@ -1610,11 +1592,7 @@ mod tests {
         };
 
         let actions = manager
-            .on_getdata(
-                1,
-                vec![InventoryItem::Block(hashes[1])],
-                &block_store,
-            )
+            .on_getdata(1, vec![InventoryItem::Block(hashes[1])], &block_store)
             .await
             .unwrap();
 
@@ -1640,11 +1618,7 @@ mod tests {
 
         let unknown_hash = BlockHash::from_hash(Hash256::from_bytes([0xFF; 32]));
         let actions = manager
-            .on_getdata(
-                1,
-                vec![InventoryItem::Block(unknown_hash)],
-                &block_store,
-            )
+            .on_getdata(1, vec![InventoryItem::Block(unknown_hash)], &block_store)
             .await
             .unwrap();
 
@@ -1878,12 +1852,7 @@ mod tests {
         };
 
         let actions = manager
-            .on_getdata_with_mempool(
-                1,
-                vec![InventoryItem::Tx(txid)],
-                &block_store,
-                &mempool,
-            )
+            .on_getdata_with_mempool(1, vec![InventoryItem::Tx(txid)], &block_store, &mempool)
             .await
             .unwrap();
 
@@ -1931,16 +1900,10 @@ mod tests {
         let mut manager = SyncManager::new(index);
 
         let stub = abtc_adapters::network::StubPeerManager::new();
-        let txid = abtc_domain::primitives::Txid::from_hash(
-            Hash256::from_bytes([0xAB; 32]),
-        );
+        let txid = abtc_domain::primitives::Txid::from_hash(Hash256::from_bytes([0xAB; 32]));
 
         let actions = manager
-            .on_inv(
-                1,
-                vec![InventoryItem::Tx(txid)],
-                &stub,
-            )
+            .on_inv(1, vec![InventoryItem::Tx(txid)], &stub)
             .await
             .unwrap();
 
@@ -1955,9 +1918,7 @@ mod tests {
         let mut manager = SyncManager::new(index);
 
         let stub = abtc_adapters::network::StubPeerManager::new();
-        let txid = abtc_domain::primitives::Txid::from_hash(
-            Hash256::from_bytes([0xCD; 32]),
-        );
+        let txid = abtc_domain::primitives::Txid::from_hash(Hash256::from_bytes([0xCD; 32]));
 
         // First inv → should request
         let actions1 = manager
@@ -2045,7 +2006,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(actions.len(), 1);
-        assert!(matches!(&actions[0], SyncAction::SendMessage(1, NetworkMessage::Verack)));
+        assert!(matches!(
+            &actions[0],
+            SyncAction::SendMessage(1, NetworkMessage::Verack)
+        ));
         assert_eq!(
             manager.peer_states.get(&1).unwrap().handshake,
             HandshakeState::AwaitingVerack
@@ -2227,14 +2191,12 @@ mod tests {
             .as_secs() as u32;
 
         // Pre-populate address book
-        manager.known_addresses.insert(
-            "1.2.3.4:8333".parse().unwrap(),
-            (now, OUR_SERVICES),
-        );
-        manager.known_addresses.insert(
-            "5.6.7.8:8333".parse().unwrap(),
-            (now - 60, OUR_SERVICES),
-        );
+        manager
+            .known_addresses
+            .insert("1.2.3.4:8333".parse().unwrap(), (now, OUR_SERVICES));
+        manager
+            .known_addresses
+            .insert("5.6.7.8:8333".parse().unwrap(), (now - 60, OUR_SERVICES));
 
         let actions = manager.on_getaddr(1).await.unwrap();
         assert_eq!(actions.len(), 1);
@@ -2284,9 +2246,9 @@ mod tests {
         let actions = manager.on_verack(1, &stub).await.unwrap();
 
         // Should include a GetAddr message
-        let has_getaddr = actions.iter().any(|a| {
-            matches!(a, SyncAction::SendMessage(1, NetworkMessage::GetAddr))
-        });
+        let has_getaddr = actions
+            .iter()
+            .any(|a| matches!(a, SyncAction::SendMessage(1, NetworkMessage::GetAddr)));
         assert!(has_getaddr, "Handshake should send GetAddr after Verack");
 
         // Peer's address should be in the address book
@@ -2342,9 +2304,9 @@ mod tests {
 
         // Should produce AcceptedTransaction (mempool accepts any valid tx)
         assert!(!actions.is_empty());
-        let has_accepted = actions.iter().any(|a| {
-            matches!(a, SyncAction::AcceptedTransaction { .. })
-        });
+        let has_accepted = actions
+            .iter()
+            .any(|a| matches!(a, SyncAction::AcceptedTransaction { .. }));
         assert!(
             has_accepted,
             "Valid tx should produce AcceptedTransaction action"
@@ -2410,8 +2372,7 @@ mod tests {
         let has_tx_action = actions.iter().any(|a| {
             matches!(
                 a,
-                SyncAction::AcceptedTransaction { .. }
-                    | SyncAction::ProcessTransaction(_)
+                SyncAction::AcceptedTransaction { .. } | SyncAction::ProcessTransaction(_)
             )
         });
         assert!(!has_tx_action, "Coinbase tx should be rejected from P2P");

@@ -87,10 +87,7 @@ pub struct MempoolAcceptor {
 
 impl MempoolAcceptor {
     /// Create a new mempool acceptor.
-    pub fn new(
-        chain_state: Arc<dyn ChainStateStore>,
-        mempool: Arc<dyn MempoolPort>,
-    ) -> Self {
+    pub fn new(chain_state: Arc<dyn ChainStateStore>, mempool: Arc<dyn MempoolPort>) -> Self {
         MempoolAcceptor {
             chain_state,
             mempool,
@@ -122,10 +119,7 @@ impl MempoolAcceptor {
     ///
     /// This is the main entry point — the equivalent of Bitcoin Core's
     /// `AcceptToMemoryPool()`.
-    pub async fn accept_transaction(
-        &self,
-        tx: &Transaction,
-    ) -> Result<AcceptResult, AcceptError> {
+    pub async fn accept_transaction(&self, tx: &Transaction) -> Result<AcceptResult, AcceptError> {
         let txid = tx.txid();
 
         // 1. Consensus validation (structure, sizes, amounts)
@@ -374,8 +368,7 @@ fn is_p2sh_witness(tx: &Transaction, input_idx: usize) -> bool {
         let push_len = inner[1] as usize;
         let is_valid_version =
             version_byte == 0x00 || (version_byte >= 0x51 && version_byte <= 0x60);
-        let is_valid_program =
-            (push_len == 20 || push_len == 32) && inner.len() == 2 + push_len;
+        let is_valid_program = (push_len == 20 || push_len == 32) && inner.len() == 2 + push_len;
         return is_valid_version && is_valid_program;
     }
 
@@ -385,10 +378,10 @@ fn is_p2sh_witness(tx: &Transaction, input_idx: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use abtc_domain::primitives::{OutPoint, TxIn, TxOut, Txid};
     use abtc_domain::Script;
     use abtc_ports::{MempoolEntry, MempoolInfo, UtxoEntry};
+    use async_trait::async_trait;
     use std::collections::HashMap;
     use tokio::sync::RwLock;
 
@@ -438,8 +431,10 @@ mod tests {
 
         async fn get_best_chain_tip(
             &self,
-        ) -> Result<(abtc_domain::primitives::BlockHash, u32), Box<dyn std::error::Error + Send + Sync>>
-        {
+        ) -> Result<
+            (abtc_domain::primitives::BlockHash, u32),
+            Box<dyn std::error::Error + Send + Sync>,
+        > {
             Ok((abtc_domain::primitives::BlockHash::zero(), 0))
         }
 
@@ -573,7 +568,8 @@ mod tests {
         let mempool = Arc::new(MockMempool::new());
 
         // Create a funding UTXO
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x01; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x01; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -634,10 +630,7 @@ mod tests {
         let tx = Transaction::coinbase(
             0,
             Script::from_bytes(vec![0x01, 0x00]),
-            vec![TxOut::new(
-                Amount::from_sat(5_000_000_000),
-                Script::new(),
-            )],
+            vec![TxOut::new(Amount::from_sat(5_000_000_000), Script::new())],
         );
 
         let result = acceptor.accept_transaction(&tx).await;
@@ -653,7 +646,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x02; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x02; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(1_000))
             .await;
@@ -683,7 +677,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x03; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x03; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -714,7 +709,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x04; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x04; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(500_000))
             .await;
@@ -758,7 +754,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x05; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x05; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -799,7 +796,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x10; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x10; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -830,7 +828,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x11; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x11; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -860,7 +859,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x12; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x12; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -886,7 +886,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x13; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x13; 32]));
         // UTXO confirmed at height 0; chain tip is also 0 → depth = 0
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
@@ -920,7 +921,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x14; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x14; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;
@@ -949,7 +951,8 @@ mod tests {
         let chain_state = Arc::new(MockChainState::new());
         let mempool = Arc::new(MockMempool::new());
 
-        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x15; 32]));
+        let funding_txid =
+            Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x15; 32]));
         chain_state
             .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
             .await;

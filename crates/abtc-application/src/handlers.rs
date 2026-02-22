@@ -29,30 +29,43 @@ impl BlockchainRpcHandler {
         chain_state: Arc<dyn ChainStateStore>,
         block_index: Arc<RwLock<BlockIndex>>,
     ) -> Self {
-        BlockchainRpcHandler { blockchain, mempool, fee_estimator, chain_state, block_index }
+        BlockchainRpcHandler {
+            blockchain,
+            mempool,
+            fee_estimator,
+            chain_state,
+            block_index,
+        }
     }
 }
 
 #[async_trait]
 impl RpcHandler for BlockchainRpcHandler {
-    async fn handle_request(&self, method: &str, _params: &Value) -> Result<Option<Value>, abtc_ports::RpcError> {
+    async fn handle_request(
+        &self,
+        method: &str,
+        _params: &Value,
+    ) -> Result<Option<Value>, abtc_ports::RpcError> {
         match method {
             "getblockcount" => {
-                let info = self.blockchain
+                let info = self
+                    .blockchain
                     .get_chain_info()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
                 Ok(Some(Value::Number(info.height.into())))
             }
             "getbestblockhash" => {
-                let info = self.blockchain
+                let info = self
+                    .blockchain
                     .get_chain_info()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
                 Ok(Some(Value::String(info.best_block_hash.to_hex_reversed())))
             }
             "getblockchaininfo" => {
-                let info = self.blockchain
+                let info = self
+                    .blockchain
                     .get_chain_info()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
@@ -70,7 +83,8 @@ impl RpcHandler for BlockchainRpcHandler {
                 })))
             }
             "getmempoolinfo" => {
-                let mempool_info = self.mempool
+                let mempool_info = self
+                    .mempool
                     .get_mempool_info()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
@@ -85,14 +99,16 @@ impl RpcHandler for BlockchainRpcHandler {
                 })))
             }
             "getrawmempool" => {
-                let contents = self.mempool
+                let contents = self
+                    .mempool
                     .get_mempool_contents()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
                 Ok(Some(json!(contents)))
             }
             "getblockhash" => {
-                let height = _params.get(0)
+                let height = _params
+                    .get(0)
                     .and_then(|v| v.as_u64())
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("missing height"))?
                     as u32;
@@ -106,17 +122,17 @@ impl RpcHandler for BlockchainRpcHandler {
                 }
             }
             "getblock" => {
-                let hash_hex = _params.get(0)
+                let hash_hex = _params
+                    .get(0)
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("missing blockhash"))?;
-                let verbosity = _params.get(1)
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(1);
+                let verbosity = _params.get(1).and_then(|v| v.as_u64()).unwrap_or(1);
 
                 let hash = abtc_domain::primitives::BlockHash::from_hex(hash_hex)
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("invalid blockhash"))?;
 
-                let block = self.blockchain
+                let block = self
+                    .blockchain
                     .get_block(&hash)
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?
@@ -143,7 +159,9 @@ impl RpcHandler for BlockchainRpcHandler {
                     drop(idx);
 
                     // Return JSON object
-                    let tx_ids: Vec<Value> = block.transactions.iter()
+                    let tx_ids: Vec<Value> = block
+                        .transactions
+                        .iter()
                         .map(|tx| Value::String(tx.txid().to_hex_reversed()))
                         .collect();
                     let mut result = json!({
@@ -178,40 +196,39 @@ impl RpcHandler for BlockchainRpcHandler {
                 // Stub — would need PeerManager access
                 Ok(Some(json!([])))
             }
-            "getnetworkinfo" => {
-                Ok(Some(json!({
-                    "version": 270000,
-                    "subversion": "/agentic-bitcoin:0.1.0/",
-                    "protocolversion": 70016,
-                    "localservices": "0000000000000409",
-                    "localservicesnames": ["NETWORK", "WITNESS", "NETWORK_LIMITED"],
-                    "localrelay": true,
-                    "timeoffset": 0,
-                    "networkactive": true,
-                    "connections": 0,
-                    "connections_in": 0,
-                    "connections_out": 0,
-                    "relayfee": 0.00001,
-                    "incrementalfee": 0.00001,
-                    "warnings": ""
-                })))
-            }
+            "getnetworkinfo" => Ok(Some(json!({
+                "version": 270000,
+                "subversion": "/agentic-bitcoin:0.1.0/",
+                "protocolversion": 70016,
+                "localservices": "0000000000000409",
+                "localservicesnames": ["NETWORK", "WITNESS", "NETWORK_LIMITED"],
+                "localrelay": true,
+                "timeoffset": 0,
+                "networkactive": true,
+                "connections": 0,
+                "connections_in": 0,
+                "connections_out": 0,
+                "relayfee": 0.00001,
+                "incrementalfee": 0.00001,
+                "warnings": ""
+            }))),
             "sendrawtransaction" => {
                 // Parse hex-encoded raw transaction and submit to mempool.
-                let hex_str = _params.get(0)
+                let hex_str = _params
+                    .get(0)
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("missing hex string"))?;
 
-                let tx_bytes = hex::decode(hex_str).map_err(|_| {
-                    abtc_ports::RpcError::invalid_params("invalid hex encoding")
-                })?;
+                let tx_bytes = hex::decode(hex_str)
+                    .map_err(|_| abtc_ports::RpcError::invalid_params("invalid hex encoding"))?;
 
                 let (tx, _) = abtc_domain::primitives::Transaction::deserialize(&tx_bytes)
-                    .map_err(|e| abtc_ports::RpcError::invalid_params(
-                        format!("TX decode failed: {}", e)
-                    ))?;
+                    .map_err(|e| {
+                        abtc_ports::RpcError::invalid_params(format!("TX decode failed: {}", e))
+                    })?;
 
-                let txid_hex = self.mempool
+                let txid_hex = self
+                    .mempool
                     .submit_transaction(&tx)
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
@@ -221,12 +238,11 @@ impl RpcHandler for BlockchainRpcHandler {
             "getrawtransaction" => {
                 // Look up a transaction by txid.
                 // Checks mempool first, then block store.
-                let txid_hex = _params.get(0)
+                let txid_hex = _params
+                    .get(0)
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("missing txid"))?;
-                let verbose = _params.get(1)
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                let verbose = _params.get(1).and_then(|v| v.as_u64()).unwrap_or(0);
 
                 let txid = abtc_domain::primitives::Txid::from_hex(txid_hex)
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("invalid txid"))?;
@@ -276,7 +292,8 @@ impl RpcHandler for BlockchainRpcHandler {
                 })
             }
             "gettxoutsetinfo" => {
-                let info = self.chain_state
+                let info = self
+                    .chain_state
                     .get_utxo_set_info()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e.to_string()))?;
@@ -294,10 +311,9 @@ impl RpcHandler for BlockchainRpcHandler {
                 })))
             }
             "estimatesmartfee" => {
-                let conf_target = _params.get(0)
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(6) as u32;
-                let _estimate_mode = _params.get(1)
+                let conf_target = _params.get(0).and_then(|v| v.as_u64()).unwrap_or(6) as u32;
+                let _estimate_mode = _params
+                    .get(1)
                     .and_then(|v| v.as_str())
                     .unwrap_or("conservative");
 
@@ -322,9 +338,7 @@ impl RpcHandler for BlockchainRpcHandler {
                 Ok(Some(result))
             }
             "estimaterawfee" => {
-                let conf_target = _params.get(0)
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(6) as u32;
+                let conf_target = _params.get(0).and_then(|v| v.as_u64()).unwrap_or(6) as u32;
 
                 let estimator = self.fee_estimator.read().await;
                 let fee_rate = estimator.estimate_fee(conf_target);
@@ -388,10 +402,15 @@ impl WalletRpcHandler {
 
 #[async_trait]
 impl RpcHandler for WalletRpcHandler {
-    async fn handle_request(&self, method: &str, params: &Value) -> Result<Option<Value>, abtc_ports::RpcError> {
+    async fn handle_request(
+        &self,
+        method: &str,
+        params: &Value,
+    ) -> Result<Option<Value>, abtc_ports::RpcError> {
         match method {
             "getbalance" => {
-                let balance = self.wallet
+                let balance = self
+                    .wallet
                     .get_balance()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e.to_string()))?;
@@ -400,7 +419,8 @@ impl RpcHandler for WalletRpcHandler {
                 Ok(Some(json!(btc)))
             }
             "getwalletinfo" => {
-                let balance = self.wallet
+                let balance = self
+                    .wallet
                     .get_balance()
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e.to_string()))?;
@@ -418,36 +438,39 @@ impl RpcHandler for WalletRpcHandler {
                 })))
             }
             "getnewaddress" => {
-                let label = params.get(0)
-                    .and_then(|v| v.as_str());
-                let address = self.wallet
+                let label = params.get(0).and_then(|v| v.as_str());
+                let address = self
+                    .wallet
                     .get_new_address(label)
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e.to_string()))?;
                 Ok(Some(Value::String(address)))
             }
             "listunspent" => {
-                let min_conf = params.get(0)
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(1) as u32;
-                let utxos = self.wallet
+                let min_conf = params.get(0).and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                let utxos = self
+                    .wallet
                     .list_unspent(min_conf, None)
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e.to_string()))?;
-                let result: Vec<Value> = utxos.iter().map(|u| {
-                    json!({
-                        "txid": u.outpoint.txid.to_hex_reversed(),
-                        "vout": u.outpoint.vout,
-                        "amount": u.output.value.as_sat() as f64 / 100_000_000.0,
-                        "confirmations": u.confirmations,
-                        "spendable": true,
-                        "solvable": true
+                let result: Vec<Value> = utxos
+                    .iter()
+                    .map(|u| {
+                        json!({
+                            "txid": u.outpoint.txid.to_hex_reversed(),
+                            "vout": u.outpoint.vout,
+                            "amount": u.output.value.as_sat() as f64 / 100_000_000.0,
+                            "confirmations": u.confirmations,
+                            "spendable": true,
+                            "solvable": true
+                        })
                     })
-                }).collect();
+                    .collect();
                 Ok(Some(json!(result)))
             }
             "importprivkey" => {
-                let wif = params.get(0)
+                let wif = params
+                    .get(0)
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| abtc_ports::RpcError::invalid_params("missing WIF key"))?;
                 let label = params.get(1).and_then(|v| v.as_str());
@@ -476,10 +499,15 @@ impl MiningRpcHandler {
 
 #[async_trait]
 impl RpcHandler for MiningRpcHandler {
-    async fn handle_request(&self, method: &str, _params: &Value) -> Result<Option<Value>, abtc_ports::RpcError> {
+    async fn handle_request(
+        &self,
+        method: &str,
+        _params: &Value,
+    ) -> Result<Option<Value>, abtc_ports::RpcError> {
         match method {
             "getblocktemplate" => {
-                let template = self.mining
+                let template = self
+                    .mining
                     .generate_block_template(&Script::new())
                     .await
                     .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
@@ -510,16 +538,14 @@ impl RpcHandler for MiningRpcHandler {
                 // TODO: Parse block from hex params
                 Ok(Some(Value::Null))
             }
-            "getmininginfo" => {
-                Ok(Some(json!({
-                    "blocks": 0,
-                    "difficulty": 1.0,
-                    "networkhashps": 0,
-                    "pooledtx": 0,
-                    "chain": "main",
-                    "warnings": ""
-                })))
-            }
+            "getmininginfo" => Ok(Some(json!({
+                "blocks": 0,
+                "difficulty": 1.0,
+                "networkhashps": 0,
+                "pooledtx": 0,
+                "chain": "main",
+                "warnings": ""
+            }))),
             _ => Ok(None),
         }
     }
@@ -535,7 +561,10 @@ mod tests {
     fn test_tx_hex_roundtrip() {
         // Build a simple transaction, serialize to hex, deserialize back.
         let tx = Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+            )],
             vec![TxOut::new(Amount::from_sat(50_000), Script::new())],
             0,
         );
@@ -624,10 +653,7 @@ mod tests {
             .await
             .unwrap();
         chain_state
-            .write_chain_tip(
-                abtc_domain::primitives::BlockHash::zero(),
-                5,
-            )
+            .write_chain_tip(abtc_domain::primitives::BlockHash::zero(), 5)
             .await
             .unwrap();
 
@@ -640,7 +666,7 @@ mod tests {
     #[test]
     fn test_block_index_height_lookup() {
         use crate::block_index::BlockIndex;
-        use abtc_domain::primitives::{BlockHash, Hash256, BlockHeader};
+        use abtc_domain::primitives::{BlockHash, BlockHeader, Hash256};
 
         let mut index = BlockIndex::new();
         let genesis = BlockHeader {
@@ -690,7 +716,10 @@ mod tests {
     fn test_tx_verbose_fields() {
         // Verify that we can compute all the fields needed for verbose getrawtransaction.
         let tx = Transaction::v1(
-            vec![TxIn::final_input(OutPoint::new(Txid::zero(), 0), Script::new())],
+            vec![TxIn::final_input(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+            )],
             vec![
                 TxOut::new(Amount::from_sat(30_000), Script::new()),
                 TxOut::new(Amount::from_sat(20_000), Script::new()),

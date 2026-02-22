@@ -76,9 +76,15 @@ pub enum PsbtError {
     /// Missing the unsigned transaction.
     MissingUnsignedTx,
     /// Input count mismatch between transaction and PSBT input maps.
-    InputCountMismatch { tx_inputs: usize, psbt_inputs: usize },
+    InputCountMismatch {
+        tx_inputs: usize,
+        psbt_inputs: usize,
+    },
     /// Output count mismatch between transaction and PSBT output maps.
-    OutputCountMismatch { tx_outputs: usize, psbt_outputs: usize },
+    OutputCountMismatch {
+        tx_outputs: usize,
+        psbt_outputs: usize,
+    },
     /// Cannot extract: not all inputs are finalized.
     NotFullyFinalized,
     /// Cannot sign: the unsigned transaction has non-empty scriptSigs.
@@ -96,10 +102,22 @@ impl std::fmt::Display for PsbtError {
             PsbtError::UnexpectedEof => write!(f, "unexpected end of PSBT data"),
             PsbtError::DuplicateKey(k) => write!(f, "duplicate PSBT key: {:?}", k),
             PsbtError::MissingUnsignedTx => write!(f, "missing unsigned transaction"),
-            PsbtError::InputCountMismatch { tx_inputs, psbt_inputs } =>
-                write!(f, "input count mismatch: tx has {}, PSBT has {}", tx_inputs, psbt_inputs),
-            PsbtError::OutputCountMismatch { tx_outputs, psbt_outputs } =>
-                write!(f, "output count mismatch: tx has {}, PSBT has {}", tx_outputs, psbt_outputs),
+            PsbtError::InputCountMismatch {
+                tx_inputs,
+                psbt_inputs,
+            } => write!(
+                f,
+                "input count mismatch: tx has {}, PSBT has {}",
+                tx_inputs, psbt_inputs
+            ),
+            PsbtError::OutputCountMismatch {
+                tx_outputs,
+                psbt_outputs,
+            } => write!(
+                f,
+                "output count mismatch: tx has {}, PSBT has {}",
+                tx_outputs, psbt_outputs
+            ),
             PsbtError::NotFullyFinalized => write!(f, "not all inputs are finalized"),
             PsbtError::TransactionNotUnsigned => write!(f, "transaction is not unsigned"),
             PsbtError::IncompatibleForCombine => write!(f, "incompatible PSBTs"),
@@ -207,7 +225,9 @@ impl Psbt {
 
     /// Add witness UTXO information for an input.
     pub fn set_witness_utxo(&mut self, input_index: usize, utxo: TxOut) -> Result<(), PsbtError> {
-        let input = self.inputs.get_mut(input_index)
+        let input = self
+            .inputs
+            .get_mut(input_index)
             .ok_or(PsbtError::InputCountMismatch {
                 tx_inputs: self.unsigned_tx.inputs.len(),
                 psbt_inputs: input_index + 1,
@@ -217,8 +237,14 @@ impl Psbt {
     }
 
     /// Add a non-witness (full) previous transaction for an input.
-    pub fn set_non_witness_utxo(&mut self, input_index: usize, tx: Transaction) -> Result<(), PsbtError> {
-        let input = self.inputs.get_mut(input_index)
+    pub fn set_non_witness_utxo(
+        &mut self,
+        input_index: usize,
+        tx: Transaction,
+    ) -> Result<(), PsbtError> {
+        let input = self
+            .inputs
+            .get_mut(input_index)
             .ok_or(PsbtError::InputCountMismatch {
                 tx_inputs: self.unsigned_tx.inputs.len(),
                 psbt_inputs: input_index + 1,
@@ -228,8 +254,14 @@ impl Psbt {
     }
 
     /// Set the sighash type for an input.
-    pub fn set_sighash_type(&mut self, input_index: usize, sighash_type: u32) -> Result<(), PsbtError> {
-        let input = self.inputs.get_mut(input_index)
+    pub fn set_sighash_type(
+        &mut self,
+        input_index: usize,
+        sighash_type: u32,
+    ) -> Result<(), PsbtError> {
+        let input = self
+            .inputs
+            .get_mut(input_index)
             .ok_or(PsbtError::InputCountMismatch {
                 tx_inputs: self.unsigned_tx.inputs.len(),
                 psbt_inputs: input_index + 1,
@@ -245,7 +277,9 @@ impl Psbt {
         pubkey: Vec<u8>,
         derivation: Bip32Derivation,
     ) -> Result<(), PsbtError> {
-        let input = self.inputs.get_mut(input_index)
+        let input = self
+            .inputs
+            .get_mut(input_index)
             .ok_or(PsbtError::InputCountMismatch {
                 tx_inputs: self.unsigned_tx.inputs.len(),
                 psbt_inputs: input_index + 1,
@@ -261,7 +295,9 @@ impl Psbt {
         pubkey: Vec<u8>,
         derivation: Bip32Derivation,
     ) -> Result<(), PsbtError> {
-        let output = self.outputs.get_mut(output_index)
+        let output = self
+            .outputs
+            .get_mut(output_index)
             .ok_or(PsbtError::OutputCountMismatch {
                 tx_outputs: self.unsigned_tx.outputs.len(),
                 psbt_outputs: output_index + 1,
@@ -279,7 +315,9 @@ impl Psbt {
         pubkey: Vec<u8>,
         signature: Vec<u8>,
     ) -> Result<(), PsbtError> {
-        let input = self.inputs.get_mut(input_index)
+        let input = self
+            .inputs
+            .get_mut(input_index)
             .ok_or(PsbtError::InputCountMismatch {
                 tx_inputs: self.unsigned_tx.inputs.len(),
                 psbt_inputs: input_index + 1,
@@ -373,7 +411,9 @@ impl Psbt {
     ///
     /// Returns an error if the input has no partial signatures.
     pub fn finalize_input(&mut self, input_index: usize) -> Result<(), PsbtError> {
-        let input = self.inputs.get_mut(input_index)
+        let input = self
+            .inputs
+            .get_mut(input_index)
             .ok_or(PsbtError::InputCountMismatch {
                 tx_inputs: self.unsigned_tx.inputs.len(),
                 psbt_inputs: input_index + 1,
@@ -429,9 +469,9 @@ impl Psbt {
 
     /// Check if all inputs are finalized.
     pub fn is_fully_finalized(&self) -> bool {
-        self.inputs.iter().all(|input| {
-            input.final_script_sig.is_some() || input.final_script_witness.is_some()
-        })
+        self.inputs
+            .iter()
+            .all(|input| input.final_script_sig.is_some() || input.final_script_witness.is_some())
     }
 
     // ── Extractor role ──────────────────────────────────────────
@@ -473,10 +513,13 @@ impl Psbt {
 
     /// Count how many inputs have at least one partial signature.
     pub fn signed_input_count(&self) -> usize {
-        self.inputs.iter()
-            .filter(|input| !input.partial_sigs.is_empty()
-                || input.final_script_sig.is_some()
-                || input.final_script_witness.is_some())
+        self.inputs
+            .iter()
+            .filter(|input| {
+                !input.partial_sigs.is_empty()
+                    || input.final_script_sig.is_some()
+                    || input.final_script_witness.is_some()
+            })
             .count()
     }
 
@@ -509,7 +552,11 @@ impl Psbt {
             }
 
             if let Some(sighash) = input.sighash_type {
-                write_kv_pair(&mut data, &[input_key::SIGHASH_TYPE], &sighash.to_le_bytes());
+                write_kv_pair(
+                    &mut data,
+                    &[input_key::SIGHASH_TYPE],
+                    &sighash.to_le_bytes(),
+                );
             }
 
             if let Some(ref script) = input.final_script_sig {
@@ -596,8 +643,14 @@ mod tests {
                 ),
             ],
             vec![
-                TxOut::new(Amount::from_sat(50000), Script::from_bytes(vec![0x76, 0xa9])),
-                TxOut::new(Amount::from_sat(40000), Script::from_bytes(vec![0x00, 0x14])),
+                TxOut::new(
+                    Amount::from_sat(50000),
+                    Script::from_bytes(vec![0x76, 0xa9]),
+                ),
+                TxOut::new(
+                    Amount::from_sat(40000),
+                    Script::from_bytes(vec![0x00, 0x14]),
+                ),
             ],
             0,
         )
@@ -632,10 +685,16 @@ mod tests {
         let tx = make_unsigned_tx();
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
-        let utxo = TxOut::new(Amount::from_sat(100000), Script::from_bytes(vec![0x00, 0x14]));
+        let utxo = TxOut::new(
+            Amount::from_sat(100000),
+            Script::from_bytes(vec![0x00, 0x14]),
+        );
         psbt.set_witness_utxo(0, utxo.clone()).unwrap();
 
-        assert_eq!(psbt.inputs[0].witness_utxo.as_ref().unwrap().value, utxo.value);
+        assert_eq!(
+            psbt.inputs[0].witness_utxo.as_ref().unwrap().value,
+            utxo.value
+        );
     }
 
     #[test]
@@ -644,9 +703,10 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         let pubkey = vec![0x02; 33]; // compressed pubkey placeholder
-        let sig = vec![0x30; 72];    // DER signature placeholder
+        let sig = vec![0x30; 72]; // DER signature placeholder
 
-        psbt.add_partial_sig(0, pubkey.clone(), sig.clone()).unwrap();
+        psbt.add_partial_sig(0, pubkey.clone(), sig.clone())
+            .unwrap();
         assert_eq!(psbt.signed_input_count(), 1);
         assert_eq!(psbt.inputs[0].partial_sigs.get(&pubkey).unwrap(), &sig);
     }
@@ -658,10 +718,14 @@ mod tests {
         let mut psbt2 = Psbt::from_unsigned_tx(tx).unwrap();
 
         // Signer 1 signs input 0
-        psbt1.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt1
+            .add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
 
         // Signer 2 signs input 1
-        psbt2.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72]).unwrap();
+        psbt2
+            .add_partial_sig(1, vec![0x03; 33], vec![0x31; 72])
+            .unwrap();
 
         // Combine
         psbt1.combine(psbt2).unwrap();
@@ -683,7 +747,10 @@ mod tests {
         let mut psbt1 = Psbt::from_unsigned_tx(tx1).unwrap();
         let psbt2 = Psbt::from_unsigned_tx(tx2).unwrap();
 
-        assert_eq!(psbt1.combine(psbt2).unwrap_err(), PsbtError::IncompatibleForCombine);
+        assert_eq!(
+            psbt1.combine(psbt2).unwrap_err(),
+            PsbtError::IncompatibleForCombine
+        );
     }
 
     #[test]
@@ -692,9 +759,13 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         // Set witness UTXO and add a partial signature
-        let utxo = TxOut::new(Amount::from_sat(100000), Script::from_bytes(vec![0x00, 0x14]));
+        let utxo = TxOut::new(
+            Amount::from_sat(100000),
+            Script::from_bytes(vec![0x00, 0x14]),
+        );
         psbt.set_witness_utxo(0, utxo).unwrap();
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
 
         // Finalize
         psbt.finalize_input(0).unwrap();
@@ -711,7 +782,8 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         // No witness UTXO = legacy
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
 
         psbt.finalize_input(0).unwrap();
 
@@ -725,8 +797,10 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         // Sign and finalize both inputs
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
-        psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
+        psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72])
+            .unwrap();
         psbt.finalize_input(0).unwrap();
         psbt.finalize_input(1).unwrap();
 
@@ -765,10 +839,12 @@ mod tests {
             path: vec![44 | 0x80000000, 0 | 0x80000000, 0 | 0x80000000, 0, 0],
         };
 
-        psbt.add_input_bip32_derivation(0, vec![0x02; 33], deriv.clone()).unwrap();
+        psbt.add_input_bip32_derivation(0, vec![0x02; 33], deriv.clone())
+            .unwrap();
         assert_eq!(psbt.inputs[0].bip32_derivation.len(), 1);
 
-        psbt.add_output_bip32_derivation(0, vec![0x02; 33], deriv).unwrap();
+        psbt.add_output_bip32_derivation(0, vec![0x02; 33], deriv)
+            .unwrap();
         assert_eq!(psbt.outputs[0].bip32_derivation.len(), 1);
     }
 
@@ -777,7 +853,8 @@ mod tests {
         let tx = make_unsigned_tx();
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
         psbt.finalize_input(0).unwrap();
 
         // Should fail — already finalized
@@ -804,8 +881,14 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         // UPDATE: Add witness UTXO info for both inputs
-        let utxo_0 = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x00, 0x14, 0xAA]));
-        let utxo_1 = TxOut::new(Amount::from_sat(80_000), Script::from_bytes(vec![0x00, 0x14, 0xBB]));
+        let utxo_0 = TxOut::new(
+            Amount::from_sat(100_000),
+            Script::from_bytes(vec![0x00, 0x14, 0xAA]),
+        );
+        let utxo_1 = TxOut::new(
+            Amount::from_sat(80_000),
+            Script::from_bytes(vec![0x00, 0x14, 0xBB]),
+        );
         psbt.set_witness_utxo(0, utxo_0).unwrap();
         psbt.set_witness_utxo(1, utxo_1).unwrap();
 
@@ -814,8 +897,10 @@ mod tests {
             master_fingerprint: [0xDE, 0xAD, 0xBE, 0xEF],
             path: vec![84 | 0x80000000, 0 | 0x80000000, 0 | 0x80000000, 0, 0],
         };
-        psbt.add_input_bip32_derivation(0, vec![0x02; 33], deriv.clone()).unwrap();
-        psbt.add_input_bip32_derivation(1, vec![0x02; 33], deriv).unwrap();
+        psbt.add_input_bip32_derivation(0, vec![0x02; 33], deriv.clone())
+            .unwrap();
+        psbt.add_input_bip32_derivation(1, vec![0x02; 33], deriv)
+            .unwrap();
 
         // UPDATE: Set sighash types
         psbt.set_sighash_type(0, 0x01).unwrap();
@@ -862,15 +947,25 @@ mod tests {
 
         // Signer 1 gets a copy, adds their signature to input 0
         let mut signer1_psbt = base_psbt.clone();
-        let utxo_0 = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x00, 0x14]));
+        let utxo_0 = TxOut::new(
+            Amount::from_sat(100_000),
+            Script::from_bytes(vec![0x00, 0x14]),
+        );
         signer1_psbt.set_witness_utxo(0, utxo_0).unwrap();
-        signer1_psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        signer1_psbt
+            .add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
 
         // Signer 2 gets a copy, adds their signature to input 1
         let mut signer2_psbt = base_psbt.clone();
-        let utxo_1 = TxOut::new(Amount::from_sat(80_000), Script::from_bytes(vec![0x00, 0x14]));
+        let utxo_1 = TxOut::new(
+            Amount::from_sat(80_000),
+            Script::from_bytes(vec![0x00, 0x14]),
+        );
         signer2_psbt.set_witness_utxo(1, utxo_1).unwrap();
-        signer2_psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72]).unwrap();
+        signer2_psbt
+            .add_partial_sig(1, vec![0x03; 33], vec![0x31; 72])
+            .unwrap();
 
         // Combiner merges both
         let mut combined = signer1_psbt;
@@ -897,8 +992,10 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         // No witness UTXO set → legacy finalization path
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
-        psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
+        psbt.add_partial_sig(1, vec![0x03; 33], vec![0x31; 72])
+            .unwrap();
 
         psbt.finalize_input(0).unwrap();
         psbt.finalize_input(1).unwrap();
@@ -920,9 +1017,13 @@ mod tests {
         let tx = make_unsigned_tx();
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
-        let utxo = TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x00, 0x14]));
+        let utxo = TxOut::new(
+            Amount::from_sat(100_000),
+            Script::from_bytes(vec![0x00, 0x14]),
+        );
         psbt.set_witness_utxo(0, utxo).unwrap();
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
 
         let bytes1 = psbt.serialize();
         let bytes2 = psbt.serialize();
@@ -943,10 +1044,7 @@ mod tests {
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
         // Input index 5 is out of bounds (only 2 inputs)
-        let result = psbt.set_witness_utxo(
-            5,
-            TxOut::new(Amount::from_sat(100_000), Script::new()),
-        );
+        let result = psbt.set_witness_utxo(5, TxOut::new(Amount::from_sat(100_000), Script::new()));
         assert!(result.is_err());
 
         let result = psbt.add_partial_sig(5, vec![0x02; 33], vec![0x30; 72]);
@@ -971,7 +1069,8 @@ mod tests {
         let tx = make_unsigned_tx();
         let mut psbt = Psbt::from_unsigned_tx(tx).unwrap();
 
-        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72]).unwrap();
+        psbt.add_partial_sig(0, vec![0x02; 33], vec![0x30; 72])
+            .unwrap();
         psbt.finalize_input(0).unwrap();
 
         // Second finalize is idempotent (returns Ok, no-op)
@@ -979,7 +1078,10 @@ mod tests {
         assert!(result.is_ok());
 
         // Still finalized with same data
-        assert!(psbt.inputs[0].final_script_sig.is_some() || psbt.inputs[0].final_script_witness.is_some());
+        assert!(
+            psbt.inputs[0].final_script_sig.is_some()
+                || psbt.inputs[0].final_script_witness.is_some()
+        );
     }
 
     #[test]
@@ -996,7 +1098,8 @@ mod tests {
 
         // Add a 64-byte Schnorr signature (no sighash byte → SIGHASH_DEFAULT)
         let schnorr_sig = vec![0xAB; 64];
-        psbt.add_partial_sig(0, vec![0x42; 32], schnorr_sig.clone()).unwrap();
+        psbt.add_partial_sig(0, vec![0x42; 32], schnorr_sig.clone())
+            .unwrap();
 
         psbt.finalize_input(0).unwrap();
 
@@ -1023,7 +1126,8 @@ mod tests {
 
         let sig = vec![0x30; 72];
         let pubkey = vec![0x02; 33];
-        psbt.add_partial_sig(0, pubkey.clone(), sig.clone()).unwrap();
+        psbt.add_partial_sig(0, pubkey.clone(), sig.clone())
+            .unwrap();
 
         psbt.finalize_input(0).unwrap();
 

@@ -8,8 +8,8 @@ use abtc_domain::consensus::{ConsensusParams, Network};
 use abtc_domain::primitives::block::{Block, BlockHeader};
 use abtc_domain::primitives::hash::{BlockHash, Hash256};
 use abtc_domain::primitives::{Amount, OutPoint, Transaction, TxIn, TxOut, Txid};
-use abtc_domain::script::Script;
 use abtc_domain::script::witness::Witness;
+use abtc_domain::script::Script;
 use abtc_ports::ChainStateStore;
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -590,7 +590,10 @@ fn test_utxo_removed_after_spend() {
     cs.process_block(block101).unwrap();
 
     // Genesis coinbase UTXO should now be spent (removed)
-    assert!(!cs.has_utxo(&genesis_outpoint), "Spent UTXO should be removed");
+    assert!(
+        !cs.has_utxo(&genesis_outpoint),
+        "Spent UTXO should be removed"
+    );
 }
 
 #[test]

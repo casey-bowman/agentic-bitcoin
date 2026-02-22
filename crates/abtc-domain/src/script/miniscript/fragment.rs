@@ -7,8 +7,8 @@
 
 use std::fmt;
 
+use super::types::{BaseType, MiniscriptType};
 use crate::wallet::keys::PublicKey;
-use super::types::{MiniscriptType, BaseType};
 
 // ---------------------------------------------------------------------------
 // Terminal — every possible miniscript fragment
@@ -22,7 +22,6 @@ use super::types::{MiniscriptType, BaseType};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Terminal {
     // ── Atoms ──────────────────────────────────────────────────────────
-
     /// `1` — always true (OP_1)
     True,
 
@@ -54,7 +53,6 @@ pub enum Terminal {
     Hash160([u8; 20]),
 
     // ── Combinators ───────────────────────────────────────────────────
-
     /// `and_v(X,Y)` — [X] [Y]  (V ∧ B/K/V)
     AndV(Box<Miniscript>, Box<Miniscript>),
 
@@ -84,7 +82,6 @@ pub enum Terminal {
     MultiA(usize, Vec<PublicKey>),
 
     // ── Wrappers (single-child type converters) ───────────────────────
-
     /// `a:X` — OP_TOALTSTACK [X] OP_FROMALTSTACK  (B → W)
     Alt(Box<Miniscript>),
 
@@ -166,7 +163,10 @@ impl Miniscript {
 
     /// Construct `after(n)`.  Panics if n == 0 or n > 500_000_000.
     pub fn after(n: u32) -> Self {
-        assert!(n > 0 && n <= 500_000_000, "after: n must be in 1..=500_000_000");
+        assert!(
+            n > 0 && n <= 500_000_000,
+            "after: n must be in 1..=500_000_000"
+        );
         Self {
             node: Terminal::After(n),
             ty: super::types::type_after(),
@@ -228,8 +228,7 @@ impl Miniscript {
 
     /// Construct `and_v(X, Y)`.
     pub fn and_v(left: Miniscript, right: Miniscript) -> Self {
-        let ty = super::types::type_and_v(&left.ty, &right.ty)
-            .expect("and_v: type check failed");
+        let ty = super::types::type_and_v(&left.ty, &right.ty).expect("and_v: type check failed");
         Self {
             node: Terminal::AndV(Box::new(left), Box::new(right)),
             ty,
@@ -238,8 +237,7 @@ impl Miniscript {
 
     /// Construct `and_b(X, Y)`.
     pub fn and_b(left: Miniscript, right: Miniscript) -> Self {
-        let ty = super::types::type_and_b(&left.ty, &right.ty)
-            .expect("and_b: type check failed");
+        let ty = super::types::type_and_b(&left.ty, &right.ty).expect("and_b: type check failed");
         Self {
             node: Terminal::AndB(Box::new(left), Box::new(right)),
             ty,
@@ -248,8 +246,7 @@ impl Miniscript {
 
     /// Construct `or_b(X, Y)`.
     pub fn or_b(left: Miniscript, right: Miniscript) -> Self {
-        let ty = super::types::type_or_b(&left.ty, &right.ty)
-            .expect("or_b: type check failed");
+        let ty = super::types::type_or_b(&left.ty, &right.ty).expect("or_b: type check failed");
         Self {
             node: Terminal::OrB(Box::new(left), Box::new(right)),
             ty,
@@ -258,8 +255,7 @@ impl Miniscript {
 
     /// Construct `or_c(X, Y)`.
     pub fn or_c(left: Miniscript, right: Miniscript) -> Self {
-        let ty = super::types::type_or_c(&left.ty, &right.ty)
-            .expect("or_c: type check failed");
+        let ty = super::types::type_or_c(&left.ty, &right.ty).expect("or_c: type check failed");
         Self {
             node: Terminal::OrC(Box::new(left), Box::new(right)),
             ty,
@@ -268,8 +264,7 @@ impl Miniscript {
 
     /// Construct `or_d(X, Y)`.
     pub fn or_d(left: Miniscript, right: Miniscript) -> Self {
-        let ty = super::types::type_or_d(&left.ty, &right.ty)
-            .expect("or_d: type check failed");
+        let ty = super::types::type_or_d(&left.ty, &right.ty).expect("or_d: type check failed");
         Self {
             node: Terminal::OrD(Box::new(left), Box::new(right)),
             ty,
@@ -278,8 +273,7 @@ impl Miniscript {
 
     /// Construct `or_i(X, Y)`.
     pub fn or_i(left: Miniscript, right: Miniscript) -> Self {
-        let ty = super::types::type_or_i(&left.ty, &right.ty)
-            .expect("or_i: type check failed");
+        let ty = super::types::type_or_i(&left.ty, &right.ty).expect("or_i: type check failed");
         Self {
             node: Terminal::OrI(Box::new(left), Box::new(right)),
             ty,
@@ -290,8 +284,7 @@ impl Miniscript {
     pub fn thresh(k: usize, subs: Vec<Miniscript>) -> Self {
         assert!(k >= 1 && k <= subs.len(), "thresh: k must be in 1..=n");
         let sub_types: Vec<_> = subs.iter().map(|s| s.ty.clone()).collect();
-        let ty = super::types::type_thresh(k, &sub_types)
-            .expect("thresh: type check failed");
+        let ty = super::types::type_thresh(k, &sub_types).expect("thresh: type check failed");
         Self {
             node: Terminal::Thresh(k, subs),
             ty,
@@ -302,8 +295,7 @@ impl Miniscript {
 
     /// Construct `a:X` (alt-stack wrapper).
     pub fn alt(inner: Miniscript) -> Self {
-        let ty = super::types::type_alt(&inner.ty)
-            .expect("alt: type check failed");
+        let ty = super::types::type_alt(&inner.ty).expect("alt: type check failed");
         Self {
             node: Terminal::Alt(Box::new(inner)),
             ty,
@@ -312,8 +304,7 @@ impl Miniscript {
 
     /// Construct `s:X` (swap wrapper).
     pub fn swap(inner: Miniscript) -> Self {
-        let ty = super::types::type_swap(&inner.ty)
-            .expect("swap: type check failed");
+        let ty = super::types::type_swap(&inner.ty).expect("swap: type check failed");
         Self {
             node: Terminal::Swap(Box::new(inner)),
             ty,
@@ -322,8 +313,7 @@ impl Miniscript {
 
     /// Construct `c:X` (checksig wrapper, K → B).
     pub fn check(inner: Miniscript) -> Self {
-        let ty = super::types::type_check(&inner.ty)
-            .expect("check: type check failed");
+        let ty = super::types::type_check(&inner.ty).expect("check: type check failed");
         Self {
             node: Terminal::Check(Box::new(inner)),
             ty,
@@ -332,8 +322,7 @@ impl Miniscript {
 
     /// Construct `d:X` (dup-if wrapper).
     pub fn dupif(inner: Miniscript) -> Self {
-        let ty = super::types::type_dupif(&inner.ty)
-            .expect("dupif: type check failed");
+        let ty = super::types::type_dupif(&inner.ty).expect("dupif: type check failed");
         Self {
             node: Terminal::DupIf(Box::new(inner)),
             ty,
@@ -342,8 +331,7 @@ impl Miniscript {
 
     /// Construct `v:X` (verify wrapper, B → V).
     pub fn verify(inner: Miniscript) -> Self {
-        let ty = super::types::type_verify(&inner.ty)
-            .expect("verify: type check failed");
+        let ty = super::types::type_verify(&inner.ty).expect("verify: type check failed");
         Self {
             node: Terminal::Verify(Box::new(inner)),
             ty,
@@ -352,8 +340,7 @@ impl Miniscript {
 
     /// Construct `j:X` (non-zero wrapper).
     pub fn nonzero(inner: Miniscript) -> Self {
-        let ty = super::types::type_nonzero(&inner.ty)
-            .expect("nonzero: type check failed");
+        let ty = super::types::type_nonzero(&inner.ty).expect("nonzero: type check failed");
         Self {
             node: Terminal::NonZero(Box::new(inner)),
             ty,
@@ -494,8 +481,7 @@ mod tests {
         secret[0] = seed.wrapping_add(1).max(1);
 
         let secp = secp256k1::Secp256k1::new();
-        let sk = secp256k1::SecretKey::from_slice(&secret)
-            .expect("valid secret key");
+        let sk = secp256k1::SecretKey::from_slice(&secret).expect("valid secret key");
         let pk = secp256k1::PublicKey::from_secret_key(&secp, &sk);
         PublicKey::from_bytes(&pk.serialize()).unwrap()
     }
@@ -601,10 +587,7 @@ mod tests {
         // or_i(pk(k1), pk(k2))
         let k1 = dummy_key(6);
         let k2 = dummy_key(7);
-        let ms = Miniscript::or_i(
-            Miniscript::pk(k1),
-            Miniscript::pk(k2),
-        );
+        let ms = Miniscript::or_i(Miniscript::pk(k1), Miniscript::pk(k2));
         assert_eq!(ms.base_type(), BaseType::B);
     }
 

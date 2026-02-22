@@ -40,17 +40,21 @@
 //! └────────────────────────────────────┘
 //! ```
 
-pub mod storage;
-pub mod network;
-pub mod mining;
 pub mod mempool;
-pub mod wallet;
+pub mod mining;
+pub mod network;
 pub mod rpc;
+pub mod storage;
+pub mod wallet;
 
 // Re-export commonly used items
-pub use storage::{BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo, BlockIndexEntry};
-pub use network::{PeerManager, NetworkMessage, InventoryItem, PeerInfo, PeerEvent, NetworkListener};
-pub use mining::{BlockTemplateProvider, BlockTemplate, BlockSubmitter};
-pub use mempool::{MempoolPort, MempoolEntry, MempoolInfo};
-pub use wallet::{WalletPort, Balance, WalletStore, WalletSnapshot, WalletKeyEntry, WalletUtxoEntry};
-pub use rpc::{RpcServer, RpcHandler, RpcRequest, RpcResponse, RpcError};
+pub use mempool::{MempoolEntry, MempoolInfo, MempoolPort};
+pub use mining::{BlockSubmitter, BlockTemplate, BlockTemplateProvider};
+pub use network::{
+    InventoryItem, NetworkListener, NetworkMessage, PeerEvent, PeerInfo, PeerManager,
+};
+pub use rpc::{RpcError, RpcHandler, RpcRequest, RpcResponse, RpcServer};
+pub use storage::{BlockIndexEntry, BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo};
+pub use wallet::{
+    Balance, WalletKeyEntry, WalletPort, WalletSnapshot, WalletStore, WalletUtxoEntry,
+};

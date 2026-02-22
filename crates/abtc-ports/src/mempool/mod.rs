@@ -3,7 +3,7 @@
 //! This module defines the port traits for transaction mempool management.
 //! The mempool is the pool of unconfirmed transactions waiting to be mined into blocks.
 
-use abtc_domain::primitives::{Transaction, Txid, Amount};
+use abtc_domain::primitives::{Amount, Transaction, Txid};
 use std::error::Error;
 
 /// An entry in the mempool.
@@ -107,7 +107,8 @@ pub trait MempoolPort: Send + Sync {
     /// # Returns
     ///
     /// Returns a vector of all transactions currently in the mempool.
-    async fn get_all_transactions(&self) -> Result<Vec<MempoolEntry>, Box<dyn Error + Send + Sync>>;
+    async fn get_all_transactions(&self)
+        -> Result<Vec<MempoolEntry>, Box<dyn Error + Send + Sync>>;
 
     /// Gets the number of transactions in the mempool.
     ///

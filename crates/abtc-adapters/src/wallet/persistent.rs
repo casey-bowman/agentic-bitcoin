@@ -6,11 +6,11 @@
 //! after operations that modify wallet state (key generation, key
 //! import, transaction sending).
 
-use async_trait::async_trait;
 use abtc_domain::primitives::{Amount, OutPoint, Transaction};
 use abtc_ports::wallet::store::WalletStore;
 use abtc_ports::wallet::UnspentOutput;
 use abtc_ports::{Balance, WalletPort};
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use super::InMemoryWallet;
@@ -58,13 +58,19 @@ impl PersistentWallet {
     }
 
     /// Add a UTXO and persist.
-    pub async fn add_utxo(&self, utxo: UnspentOutput) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn add_utxo(
+        &self,
+        utxo: UnspentOutput,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.inner.add_utxo(utxo).await;
         self.save().await
     }
 
     /// Remove spent UTXOs and persist.
-    pub async fn remove_utxos(&self, spent: &[OutPoint]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn remove_utxos(
+        &self,
+        spent: &[OutPoint],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.inner.remove_utxos(spent).await;
         self.save().await
     }
@@ -179,13 +185,18 @@ mod tests {
 
     #[async_trait]
     impl WalletStore for MockWalletStore {
-        async fn save(&self, snapshot: &WalletSnapshot) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        async fn save(
+            &self,
+            snapshot: &WalletSnapshot,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             *self.data.lock().unwrap() = Some(snapshot.clone());
             *self.save_count.lock().unwrap() += 1;
             Ok(())
         }
 
-        async fn load(&self) -> Result<Option<WalletSnapshot>, Box<dyn std::error::Error + Send + Sync>> {
+        async fn load(
+            &self,
+        ) -> Result<Option<WalletSnapshot>, Box<dyn std::error::Error + Send + Sync>> {
             Ok(self.data.lock().unwrap().clone())
         }
 
@@ -200,9 +211,7 @@ mod tests {
         let inner = Arc::new(InMemoryWallet::default_testnet());
         let store = Arc::new(MockWalletStore::new());
 
-        let wallet = PersistentWallet::new(inner, store.clone())
-            .await
-            .unwrap();
+        let wallet = PersistentWallet::new(inner, store.clone()).await.unwrap();
 
         let balance = wallet.get_balance().await.unwrap();
         assert_eq!(balance.confirmed.as_sat(), 0);
@@ -214,9 +223,7 @@ mod tests {
         let inner = Arc::new(InMemoryWallet::default_testnet());
         let store = Arc::new(MockWalletStore::new());
 
-        let wallet = PersistentWallet::new(inner, store.clone())
-            .await
-            .unwrap();
+        let wallet = PersistentWallet::new(inner, store.clone()).await.unwrap();
 
         let addr = wallet.get_new_address(Some("test")).await.unwrap();
         assert!(addr.starts_with("tb1q"));
@@ -233,15 +240,16 @@ mod tests {
         let inner = Arc::new(InMemoryWallet::default_testnet());
         let store = Arc::new(MockWalletStore::new());
 
-        let wallet = PersistentWallet::new(inner, store.clone())
-            .await
-            .unwrap();
+        let wallet = PersistentWallet::new(inner, store.clone()).await.unwrap();
 
         // Generate a key to get a valid WIF
         let key = abtc_domain::wallet::keys::PrivateKey::generate(true, false);
         let wif = key.to_wif();
 
-        wallet.import_key(&wif, Some("imported"), false).await.unwrap();
+        wallet
+            .import_key(&wif, Some("imported"), false)
+            .await
+            .unwrap();
         assert_eq!(store.save_count(), 1);
         assert_eq!(wallet.key_count().await, 1);
     }
@@ -251,9 +259,7 @@ mod tests {
         let inner = Arc::new(InMemoryWallet::default_testnet());
         let store = Arc::new(MockWalletStore::new());
 
-        let wallet = PersistentWallet::new(inner, store.clone())
-            .await
-            .unwrap();
+        let wallet = PersistentWallet::new(inner, store.clone()).await.unwrap();
 
         let utxo = UnspentOutput {
             outpoint: OutPoint::new(abtc_domain::Txid::zero(), 0),
@@ -276,9 +282,7 @@ mod tests {
         // Phase 1: Create wallet, add key, save
         {
             let inner = Arc::new(InMemoryWallet::new(false, AddressType::P2WPKH));
-            let wallet = PersistentWallet::new(inner, store.clone())
-                .await
-                .unwrap();
+            let wallet = PersistentWallet::new(inner, store.clone()).await.unwrap();
 
             wallet.get_new_address(Some("restored")).await.unwrap();
             assert_eq!(store.save_count(), 1);
@@ -287,9 +291,7 @@ mod tests {
         // Phase 2: Create new inner wallet, load from store
         {
             let inner2 = Arc::new(InMemoryWallet::new(false, AddressType::P2WPKH));
-            let wallet2 = PersistentWallet::new(inner2, store.clone())
-                .await
-                .unwrap();
+            let wallet2 = PersistentWallet::new(inner2, store.clone()).await.unwrap();
 
             // Key should be restored
             assert_eq!(wallet2.key_count().await, 1);
@@ -301,9 +303,7 @@ mod tests {
         let inner = Arc::new(InMemoryWallet::default_testnet());
         let store = Arc::new(MockWalletStore::new());
 
-        let wallet = PersistentWallet::new(inner, store.clone())
-            .await
-            .unwrap();
+        let wallet = PersistentWallet::new(inner, store.clone()).await.unwrap();
 
         wallet.get_new_address(None).await.unwrap();
         wallet.get_new_address(None).await.unwrap();

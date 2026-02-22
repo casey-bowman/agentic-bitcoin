@@ -6,8 +6,8 @@
 //! This module defines the high-level message types only; encoding/decoding
 //! lives in `codec.rs`.
 
-use crate::primitives::{Block, BlockHash, BlockHeader, Transaction};
 use super::types::{InvVector, NetAddress, ServiceFlags};
+use crate::primitives::{Block, BlockHash, BlockHeader, Transaction};
 
 // ---------------------------------------------------------------------------
 // NetworkMessage — the top-level enum
@@ -17,7 +17,6 @@ use super::types::{InvVector, NetAddress, ServiceFlags};
 #[derive(Debug, Clone)]
 pub enum NetworkMessage {
     // ── Handshake ────────────────────────────────────────────────────
-
     /// Initiates or responds to a peer connection.
     Version(VersionMessage),
 
@@ -25,7 +24,6 @@ pub enum NetworkMessage {
     Verack,
 
     // ── Feature negotiation (post-handshake) ────────────────────────
-
     /// BIP339: Negotiate wtxid-based transaction relay.
     WtxidRelay,
 
@@ -36,15 +34,12 @@ pub enum NetworkMessage {
     SendCmpct(SendCmpctMessage),
 
     /// BIP133: Set minimum fee rate for tx relay (in sat/kB).
-    FeeFilter {
-        feerate: u64,
-    },
+    FeeFilter { feerate: u64 },
 
     /// BIP155: Negotiate addrv2 support.
     SendAddrV2,
 
     // ── Address relay ───────────────────────────────────────────────
-
     /// Peer address announcement (legacy, up to 1000 entries).
     Addr(Vec<TimestampedAddress>),
 
@@ -55,7 +50,6 @@ pub enum NetworkMessage {
     GetAddr,
 
     // ── Inventory / data relay ──────────────────────────────────────
-
     /// Announce available objects (transactions, blocks).
     Inv(Vec<InvVector>),
 
@@ -66,7 +60,6 @@ pub enum NetworkMessage {
     NotFound(Vec<InvVector>),
 
     // ── Block relay ─────────────────────────────────────────────────
-
     /// Transmit a full block (BIP144 segwit encoding when appropriate).
     Block(Block),
 
@@ -80,7 +73,6 @@ pub enum NetworkMessage {
     GetBlocks(GetBlocksMessage),
 
     // ── Transaction relay ───────────────────────────────────────────
-
     /// Transmit a transaction (BIP144 segwit encoding when appropriate).
     Tx(Transaction),
 
@@ -88,7 +80,6 @@ pub enum NetworkMessage {
     MemPool,
 
     // ── Compact blocks (BIP152) ─────────────────────────────────────
-
     /// Compact block message.
     CmpctBlock(CmpctBlockMessage),
 
@@ -99,27 +90,18 @@ pub enum NetworkMessage {
     BlockTxn(BlockTxnMessage),
 
     // ── Ping / pong ─────────────────────────────────────────────────
-
     /// Ping — requests pong with matching nonce.
-    Ping {
-        nonce: u64,
-    },
+    Ping { nonce: u64 },
 
     /// Pong — echoes ping nonce.
-    Pong {
-        nonce: u64,
-    },
+    Pong { nonce: u64 },
 
     // ── Misc ────────────────────────────────────────────────────────
-
     /// Alert messages (deprecated, but peers may still send them).
     Alert(Vec<u8>),
 
     /// Unknown / unsupported command — payload preserved for forwarding.
-    Unknown {
-        command: String,
-        payload: Vec<u8>,
-    },
+    Unknown { command: String, payload: Vec<u8> },
 }
 
 impl NetworkMessage {

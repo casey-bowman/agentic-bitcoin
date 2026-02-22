@@ -13,9 +13,7 @@ pub struct Witness {
 impl Witness {
     /// Create an empty witness
     pub fn new() -> Self {
-        Witness {
-            stack: Vec::new(),
-        }
+        Witness { stack: Vec::new() }
     }
 
     /// Create witness from stack

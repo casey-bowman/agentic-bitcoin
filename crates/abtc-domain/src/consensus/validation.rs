@@ -81,8 +81,12 @@ impl fmt::Display for ValidationError {
             ValidationError::BlockSizeTooLarge => write!(f, "Block size exceeds maximum"),
             ValidationError::BlockWeightTooLarge => write!(f, "Block weight exceeds maximum"),
             ValidationError::BlockNoTransactions => write!(f, "Block has no transactions"),
-            ValidationError::BlockCoinbaseNotFirst => write!(f, "Block first transaction is not coinbase"),
-            ValidationError::BlockCoinbaseMultiple => write!(f, "Block has multiple coinbase transactions"),
+            ValidationError::BlockCoinbaseNotFirst => {
+                write!(f, "Block first transaction is not coinbase")
+            }
+            ValidationError::BlockCoinbaseMultiple => {
+                write!(f, "Block has multiple coinbase transactions")
+            }
             ValidationError::BlockSigopsTooCostly => write!(f, "Block sigops exceed limit"),
             ValidationError::LockTimeInvalid => write!(f, "Locktime is invalid"),
             ValidationError::SequenceInvalid => write!(f, "Sequence is invalid"),

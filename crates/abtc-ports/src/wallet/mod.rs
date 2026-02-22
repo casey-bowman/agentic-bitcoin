@@ -5,10 +5,10 @@
 
 pub mod store;
 
-use abtc_domain::primitives::{Transaction, Amount, OutPoint, TxOut};
+use abtc_domain::primitives::{Amount, OutPoint, Transaction, TxOut};
 use std::error::Error;
 
-pub use store::{WalletStore, WalletSnapshot, WalletKeyEntry, WalletUtxoEntry};
+pub use store::{WalletKeyEntry, WalletSnapshot, WalletStore, WalletUtxoEntry};
 
 /// Represents a wallet's balance broken down by confirmation status.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +25,7 @@ impl Balance {
     /// Gets the total balance across all categories.
     pub fn total(&self) -> Amount {
         Amount::from_sat(
-            self.confirmed.as_sat() + self.unconfirmed.as_sat() + self.immature.as_sat()
+            self.confirmed.as_sat() + self.unconfirmed.as_sat() + self.immature.as_sat(),
         )
     }
 }
@@ -115,7 +115,10 @@ pub trait WalletPort: Send + Sync {
     /// # Returns
     ///
     /// Returns the transaction ID if successful.
-    async fn send_transaction(&self, tx: &Transaction) -> Result<String, Box<dyn Error + Send + Sync>>;
+    async fn send_transaction(
+        &self,
+        tx: &Transaction,
+    ) -> Result<String, Box<dyn Error + Send + Sync>>;
 
     /// Generates a new address for receiving funds.
     ///
@@ -126,7 +129,10 @@ pub trait WalletPort: Send + Sync {
     /// # Returns
     ///
     /// Returns the new address as a string.
-    async fn get_new_address(&self, label: Option<&str>) -> Result<String, Box<dyn Error + Send + Sync>>;
+    async fn get_new_address(
+        &self,
+        label: Option<&str>,
+    ) -> Result<String, Box<dyn Error + Send + Sync>>;
 
     /// Imports a private key into the wallet.
     ///

@@ -7,9 +7,11 @@
 //!   cargo test --release -p abtc-domain bench_ -- --nocapture
 
 use abtc_domain::crypto::hashing;
-use abtc_domain::crypto::taproot::{tagged_hash, tapleaf_hash, tapbranch_hash, TAPSCRIPT_LEAF_VERSION};
-use abtc_domain::script::{Script, ScriptFlags, NoSigChecker, verify_script};
+use abtc_domain::crypto::taproot::{
+    tagged_hash, tapbranch_hash, tapleaf_hash, TAPSCRIPT_LEAF_VERSION,
+};
 use abtc_domain::script::Opcodes;
+use abtc_domain::script::{verify_script, NoSigChecker, Script, ScriptFlags};
 use std::time::Instant;
 
 /// Simple timing helper for stable Rust benchmarks
@@ -171,14 +173,15 @@ fn bench_script_execution() {
     let sig = Script::from_bytes(vec![Opcodes::OP_5 as u8]);
     let pubkey = Script::from_bytes(vec![
         Opcodes::OP_DUP as u8,
-        Opcodes::OP_ADD as u8,    // 10
+        Opcodes::OP_ADD as u8, // 10
         Opcodes::OP_DUP as u8,
-        Opcodes::OP_ADD as u8,    // 20
+        Opcodes::OP_ADD as u8, // 20
         Opcodes::OP_DUP as u8,
-        Opcodes::OP_ADD as u8,    // 40
+        Opcodes::OP_ADD as u8, // 40
         Opcodes::OP_DUP as u8,
-        Opcodes::OP_ADD as u8,    // 80
-        0x01, 0x50,               // push 80
+        Opcodes::OP_ADD as u8, // 80
+        0x01,
+        0x50, // push 80
         Opcodes::OP_EQUAL as u8,
     ]);
     bench("DUP+ADD chain (5->80)", 100_000, || {
@@ -190,7 +193,7 @@ fn bench_script_execution() {
 fn bench_secp256k1_operations() {
     println!("\n=== secp256k1 Benchmarks ===");
 
-    use secp256k1::{Secp256k1, SecretKey, PublicKey, Message};
+    use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
     let secret_key = SecretKey::from_slice(&[0x01; 32]).unwrap();

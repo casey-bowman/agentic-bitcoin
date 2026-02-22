@@ -11,10 +11,10 @@ pub mod key_expr;
 pub mod parser;
 
 // Re-export key public types
-pub use descriptor::{Descriptor, ShInner, WshInner, TrTree};
+pub use checksum::{add_checksum, descriptor_checksum, verify_checksum, ChecksumError};
+pub use compiler::DescriptorError;
+pub use descriptor::{Descriptor, ShInner, TrTree, WshInner};
 pub use key_expr::{
-    DescriptorKey, SingleKey, ExtendedKey, XKey, KeyOrigin, Wildcard, KeyError, HARDENED_BIT,
+    DescriptorKey, ExtendedKey, KeyError, KeyOrigin, SingleKey, Wildcard, XKey, HARDENED_BIT,
 };
 pub use parser::{parse_descriptor, ParseError};
-pub use checksum::{descriptor_checksum, verify_checksum, add_checksum, ChecksumError};
-pub use compiler::DescriptorError;

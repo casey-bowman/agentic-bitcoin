@@ -12,8 +12,10 @@ use abtc_domain::consensus::rules;
 use abtc_domain::consensus::ConsensusParams;
 use abtc_domain::crypto::signing::TransactionSignatureChecker;
 use abtc_domain::primitives::{Block, BlockHash, Transaction};
-use abtc_domain::script::{ScriptFlags, verify_script_with_witness};
-use abtc_ports::{BlockStore, ChainStateStore, MempoolPort, BlockTemplateProvider, PeerManager, UtxoEntry};
+use abtc_domain::script::{verify_script_with_witness, ScriptFlags};
+use abtc_ports::{
+    BlockStore, BlockTemplateProvider, ChainStateStore, MempoolPort, PeerManager, UtxoEntry,
+};
 use std::sync::Arc;
 
 /// Blockchain validation and acceptance service
@@ -34,7 +36,12 @@ impl BlockchainService {
         chain_state: Arc<dyn ChainStateStore>,
         peer_manager: Arc<dyn PeerManager>,
     ) -> Self {
-        Self::with_params(block_store, chain_state, peer_manager, ConsensusParams::mainnet())
+        Self::with_params(
+            block_store,
+            chain_state,
+            peer_manager,
+            ConsensusParams::mainnet(),
+        )
     }
 
     /// Create a new blockchain service with explicit consensus parameters.
@@ -66,7 +73,12 @@ impl BlockchainService {
         tracing::info!("Validating block: {}", block_hash);
 
         // Check if block already exists
-        if self.block_store.has_block(&block_hash).await.map_err(|e| e.to_string())? {
+        if self
+            .block_store
+            .has_block(&block_hash)
+            .await
+            .map_err(|e| e.to_string())?
+        {
             return Err("Block already exists".to_string());
         }
 
@@ -76,10 +88,12 @@ impl BlockchainService {
         }
 
         // Validate block against consensus rules
-        rules::check_block(block, &self.consensus_params).map_err(|e| format!("Block validation failed: {}", e))?;
+        rules::check_block(block, &self.consensus_params)
+            .map_err(|e| format!("Block validation failed: {}", e))?;
 
         // Get current chain tip height
-        let (_, current_height) = self.chain_state
+        let (_, current_height) = self
+            .chain_state
             .get_best_chain_tip()
             .await
             .map_err(|e| e.to_string())?;
@@ -97,14 +111,19 @@ impl BlockchainService {
 
             for (input_idx, input) in tx.inputs.iter().enumerate() {
                 // Look up the UTXO being spent
-                let utxo = self.chain_state
+                let utxo = self
+                    .chain_state
                     .get_utxo(&input.previous_output.txid, input.previous_output.vout)
                     .await
                     .map_err(|e| e.to_string())?
-                    .ok_or_else(|| format!(
-                        "Missing UTXO for input {}:{} in tx {}",
-                        input.previous_output.txid, input.previous_output.vout, tx.txid()
-                    ))?;
+                    .ok_or_else(|| {
+                        format!(
+                            "Missing UTXO for input {}:{} in tx {}",
+                            input.previous_output.txid,
+                            input.previous_output.vout,
+                            tx.txid()
+                        )
+                    })?;
 
                 let script_pubkey = &utxo.output.script_pubkey;
                 let spent_amount = utxo.output.value;
@@ -113,11 +132,12 @@ impl BlockchainService {
                 // - If the output is a witness program (P2WPKH, P2WSH) or P2SH-wrapped witness,
                 //   use BIP143 sighash (new_witness_v0)
                 // - Otherwise use legacy sighash
-                let checker = if script_pubkey.is_witness_program() || Self::is_p2sh_witness(tx, input_idx) {
-                    TransactionSignatureChecker::new_witness_v0(tx, input_idx, spent_amount)
-                } else {
-                    TransactionSignatureChecker::new(tx, input_idx, spent_amount)
-                };
+                let checker =
+                    if script_pubkey.is_witness_program() || Self::is_p2sh_witness(tx, input_idx) {
+                        TransactionSignatureChecker::new_witness_v0(tx, input_idx, spent_amount)
+                    } else {
+                        TransactionSignatureChecker::new(tx, input_idx, spent_amount)
+                    };
 
                 verify_script_with_witness(
                     &input.script_sig,
@@ -125,10 +145,15 @@ impl BlockchainService {
                     &input.witness,
                     script_flags,
                     &checker,
-                ).map_err(|e| format!(
-                    "Script verification failed for input {} of tx {}: {:?}",
-                    input_idx, tx.txid(), e
-                ))?;
+                )
+                .map_err(|e| {
+                    format!(
+                        "Script verification failed for input {} of tx {}: {:?}",
+                        input_idx,
+                        tx.txid(),
+                        e
+                    )
+                })?;
             }
         }
 
@@ -176,7 +201,8 @@ impl BlockchainService {
             .map_err(|e| e.to_string())?;
 
         // Broadcast to peers
-        let peer_count = self.peer_manager
+        let peer_count = self
+            .peer_manager
             .broadcast_block(block)
             .await
             .map_err(|e| e.to_string())?;
@@ -202,7 +228,8 @@ impl BlockchainService {
         tracing::debug!("Processing transaction: {}", txid);
 
         // Validate transaction against consensus rules
-        rules::check_transaction(tx).map_err(|e| format!("Transaction validation failed: {}", e))?;
+        rules::check_transaction(tx)
+            .map_err(|e| format!("Transaction validation failed: {}", e))?;
 
         // Coinbase transactions can't be submitted to mempool
         if tx.is_coinbase() {
@@ -211,7 +238,8 @@ impl BlockchainService {
 
         // Check that all inputs reference existing UTXOs (no double-spends)
         for input in &tx.inputs {
-            let has_utxo = self.chain_state
+            let has_utxo = self
+                .chain_state
                 .has_utxo(&input.previous_output.txid, input.previous_output.vout)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -227,7 +255,8 @@ impl BlockchainService {
         // Verify total input value >= total output value
         let mut total_input_value: i64 = 0;
         for input in &tx.inputs {
-            let utxo = self.chain_state
+            let utxo = self
+                .chain_state
                 .get_utxo(&input.previous_output.txid, input.previous_output.vout)
                 .await
                 .map_err(|e| e.to_string())?
@@ -250,7 +279,8 @@ impl BlockchainService {
         let script_flags = ScriptFlags::standard();
 
         for (input_idx, input) in tx.inputs.iter().enumerate() {
-            let utxo = self.chain_state
+            let utxo = self
+                .chain_state
                 .get_utxo(&input.previous_output.txid, input.previous_output.vout)
                 .await
                 .map_err(|e| e.to_string())?
@@ -259,11 +289,12 @@ impl BlockchainService {
             let script_pubkey = &utxo.output.script_pubkey;
             let spent_amount = utxo.output.value;
 
-            let checker = if script_pubkey.is_witness_program() || Self::is_p2sh_witness(tx, input_idx) {
-                TransactionSignatureChecker::new_witness_v0(tx, input_idx, spent_amount)
-            } else {
-                TransactionSignatureChecker::new(tx, input_idx, spent_amount)
-            };
+            let checker =
+                if script_pubkey.is_witness_program() || Self::is_p2sh_witness(tx, input_idx) {
+                    TransactionSignatureChecker::new_witness_v0(tx, input_idx, spent_amount)
+                } else {
+                    TransactionSignatureChecker::new(tx, input_idx, spent_amount)
+                };
 
             verify_script_with_witness(
                 &input.script_sig,
@@ -271,17 +302,16 @@ impl BlockchainService {
                 &input.witness,
                 script_flags,
                 &checker,
-            ).map_err(|e| format!(
-                "Script verification failed for input {} of tx {}: {:?}",
-                input_idx, txid, e
-            ))?;
+            )
+            .map_err(|e| {
+                format!(
+                    "Script verification failed for input {} of tx {}: {:?}",
+                    input_idx, txid, e
+                )
+            })?;
         }
 
-        tracing::debug!(
-            "Transaction {} validated (fee: {} satoshis)",
-            txid,
-            fee
-        );
+        tracing::debug!("Transaction {} validated (fee: {} satoshis)", txid, fee);
 
         Ok(())
     }
@@ -320,8 +350,10 @@ impl BlockchainService {
         if inner.len() >= 2 {
             let version_byte = inner[0];
             let push_len = inner[1] as usize;
-            let is_valid_version = version_byte == 0x00 || (version_byte >= 0x51 && version_byte <= 0x60);
-            let is_valid_program = (push_len == 20 || push_len == 32) && inner.len() == 2 + push_len;
+            let is_valid_version =
+                version_byte == 0x00 || (version_byte >= 0x51 && version_byte <= 0x60);
+            let is_valid_program =
+                (push_len == 20 || push_len == 32) && inner.len() == 2 + push_len;
             return is_valid_version && is_valid_program;
         }
 
@@ -330,7 +362,8 @@ impl BlockchainService {
 
     /// Get current chain information
     pub async fn get_chain_info(&self) -> Result<ChainInfo, String> {
-        let (best_block_hash, height) = self.chain_state
+        let (best_block_hash, height) = self
+            .chain_state
             .get_best_chain_tip()
             .await
             .map_err(|e| e.to_string())?;
@@ -361,7 +394,10 @@ pub struct MempoolService {
 impl MempoolService {
     /// Create a new mempool service
     pub fn new(mempool: Arc<dyn MempoolPort>, chain_state: Arc<dyn ChainStateStore>) -> Self {
-        MempoolService { mempool, _chain_state: chain_state }
+        MempoolService {
+            mempool,
+            _chain_state: chain_state,
+        }
     }
 
     /// Submit a transaction to the mempool
@@ -378,12 +414,16 @@ impl MempoolService {
 
     /// Get all transactions in the mempool
     pub async fn get_mempool_contents(&self) -> Result<Vec<String>, String> {
-        let txs = self.mempool
+        let txs = self
+            .mempool
             .get_all_transactions()
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(txs.iter().map(|entry| entry.tx.txid().to_hex_reversed()).collect())
+        Ok(txs
+            .iter()
+            .map(|entry| entry.tx.txid().to_hex_reversed())
+            .collect())
     }
 
     /// Estimate fee for a transaction
@@ -407,11 +447,7 @@ impl MempoolService {
         &self,
         txid: &abtc_domain::primitives::Txid,
     ) -> Option<abtc_ports::MempoolEntry> {
-        self.mempool
-            .get_transaction(txid)
-            .await
-            .ok()
-            .flatten()
+        self.mempool.get_transaction(txid).await.ok().flatten()
     }
 }
 

@@ -220,7 +220,7 @@ fn verify_tweaked_output(
     output_key: &[u8],
     expected_parity: bool,
 ) -> bool {
-    use secp256k1::{Secp256k1, XOnlyPublicKey, Scalar};
+    use secp256k1::{Scalar, Secp256k1, XOnlyPublicKey};
 
     let secp = Secp256k1::verification_only();
 
@@ -340,7 +340,12 @@ impl TapNode {
     }
 
     /// Collect the merkle proof (sibling hashes) for a target leaf index.
-    fn merkle_proof(&self, target: usize, leaf_hashes: &[[u8; 32]], path: &mut Vec<[u8; 32]>) -> bool {
+    fn merkle_proof(
+        &self,
+        target: usize,
+        leaf_hashes: &[[u8; 32]],
+        path: &mut Vec<[u8; 32]>,
+    ) -> bool {
         match self {
             TapNode::Leaf(idx) => *idx == target,
             TapNode::Branch(left, right) => {
@@ -468,7 +473,8 @@ impl TapTree {
         }
 
         let mut merkle_path = Vec::new();
-        self.root_node.merkle_proof(leaf_index, &self.leaf_hashes, &mut merkle_path);
+        self.root_node
+            .merkle_proof(leaf_index, &self.leaf_hashes, &mut merkle_path);
 
         Some(ControlBlock {
             leaf_version: self.leaves[leaf_index].leaf_version,
@@ -480,9 +486,15 @@ impl TapTree {
 
     /// Serialize a control block to bytes for inclusion in the witness.
     pub fn serialize_control_block(control: &ControlBlock) -> Vec<u8> {
-        let mut data = Vec::with_capacity(TAPROOT_CONTROL_BASE_SIZE + control.merkle_path.len() * 32);
+        let mut data =
+            Vec::with_capacity(TAPROOT_CONTROL_BASE_SIZE + control.merkle_path.len() * 32);
         // First byte: leaf_version | parity_bit
-        let first_byte = control.leaf_version | if control.output_key_parity { 0x01 } else { 0x00 };
+        let first_byte = control.leaf_version
+            | if control.output_key_parity {
+                0x01
+            } else {
+                0x00
+            };
         data.push(first_byte);
         data.extend_from_slice(&control.internal_key);
         for node in &control.merkle_path {
@@ -495,7 +507,7 @@ impl TapTree {
     ///
     /// Returns (output_key_x_only, parity_is_odd)
     pub fn compute_output_key(&self, internal_key: &[u8; 32]) -> Option<([u8; 32], bool)> {
-        use secp256k1::{Secp256k1, XOnlyPublicKey, Scalar};
+        use secp256k1::{Scalar, Secp256k1, XOnlyPublicKey};
 
         let secp = Secp256k1::verification_only();
 
@@ -638,7 +650,7 @@ mod tests {
         // Construct a complete Taproot script-path commitment and verify it.
         // Steps: create internal key → create script → compute merkle root
         //        → derive output key → verify commitment
-        use secp256k1::{Secp256k1, SecretKey, Scalar};
+        use secp256k1::{Scalar, Secp256k1, SecretKey};
 
         let secp = Secp256k1::new();
 
@@ -681,7 +693,7 @@ mod tests {
 
     #[test]
     fn test_verify_taproot_commitment_wrong_script_fails() {
-        use secp256k1::{Secp256k1, SecretKey, Scalar};
+        use secp256k1::{Scalar, Secp256k1, SecretKey};
 
         let secp = Secp256k1::new();
         let secret = SecretKey::from_slice(&[0x42; 32]).unwrap();
@@ -719,7 +731,7 @@ mod tests {
     #[test]
     fn test_verify_taproot_commitment_two_scripts() {
         // Build a Taproot tree with two scripts and verify each one
-        use secp256k1::{Secp256k1, SecretKey, Scalar};
+        use secp256k1::{Scalar, Secp256k1, SecretKey};
 
         let secp = Secp256k1::new();
         let secret = SecretKey::from_slice(&[0x42; 32]).unwrap();
@@ -774,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_verify_taproot_commitment_wrong_parity_fails() {
-        use secp256k1::{Secp256k1, SecretKey, Scalar};
+        use secp256k1::{Scalar, Secp256k1, SecretKey};
 
         let secp = Secp256k1::new();
         let secret = SecretKey::from_slice(&[0x42; 32]).unwrap();
@@ -809,7 +821,7 @@ mod tests {
 
     #[test]
     fn test_verify_taproot_commitment_wrong_internal_key_fails() {
-        use secp256k1::{Secp256k1, SecretKey, Scalar};
+        use secp256k1::{Scalar, Secp256k1, SecretKey};
 
         let secp = Secp256k1::new();
         let secret = SecretKey::from_slice(&[0x42; 32]).unwrap();
@@ -884,7 +896,10 @@ mod tests {
         let hash_c0 = tapleaf_hash(0xC0, &script);
         let hash_c2 = tapleaf_hash(0xC2, &script); // hypothetical future leaf version
 
-        assert_ne!(hash_c0, hash_c2, "Different leaf versions should produce different hashes");
+        assert_ne!(
+            hash_c0, hash_c2,
+            "Different leaf versions should produce different hashes"
+        );
     }
 
     #[test]
@@ -892,7 +907,10 @@ mod tests {
         let hash_1 = tapleaf_hash(TAPSCRIPT_LEAF_VERSION, &[0x51]);
         let hash_2 = tapleaf_hash(TAPSCRIPT_LEAF_VERSION, &[0x52]);
 
-        assert_ne!(hash_1, hash_2, "Different scripts should produce different leaf hashes");
+        assert_ne!(
+            hash_1, hash_2,
+            "Different scripts should produce different leaf hashes"
+        );
     }
 
     #[test]
@@ -1028,10 +1046,7 @@ mod tests {
 
     #[test]
     fn test_taptree_control_block_two_leaves() {
-        let tree = TapTree::new(vec![
-            TapLeaf::new(vec![0x51]),
-            TapLeaf::new(vec![0x52]),
-        ]);
+        let tree = TapTree::new(vec![TapLeaf::new(vec![0x51]), TapLeaf::new(vec![0x52])]);
         let internal_key = [0x02u8; 32];
 
         // Control block for leaf 0: merkle path = [leaf_1_hash]
@@ -1055,10 +1070,7 @@ mod tests {
 
     #[test]
     fn test_taptree_serialize_control_block_roundtrip() {
-        let tree = TapTree::new(vec![
-            TapLeaf::new(vec![0x51]),
-            TapLeaf::new(vec![0x52]),
-        ]);
+        let tree = TapTree::new(vec![TapLeaf::new(vec![0x51]), TapLeaf::new(vec![0x52])]);
         let internal_key = [0x02u8; 32];
         let cb = tree.control_block(0, &internal_key, true).unwrap();
 
@@ -1080,10 +1092,7 @@ mod tests {
         let (internal_xonly, _) = secret.x_only_public_key(&secp);
         let internal_key = internal_xonly.serialize();
 
-        let tree = TapTree::new(vec![
-            TapLeaf::new(vec![0x51]),
-            TapLeaf::new(vec![0x52]),
-        ]);
+        let tree = TapTree::new(vec![TapLeaf::new(vec![0x51]), TapLeaf::new(vec![0x52])]);
 
         let (output_key, parity) = tree.compute_output_key(&internal_key).unwrap();
 

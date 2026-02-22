@@ -81,24 +81,52 @@ impl TypeModifiers {
     /// All modifiers false.
     pub fn none() -> Self {
         TypeModifiers {
-            z: false, o: false, n: false, d: false, u: false,
-            e: false, f: false, s: false, m: false, x: false,
+            z: false,
+            o: false,
+            n: false,
+            d: false,
+            u: false,
+            e: false,
+            f: false,
+            s: false,
+            m: false,
+            x: false,
         }
     }
 }
 
 impl fmt::Display for TypeModifiers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.z { write!(f, "z")?; }
-        if self.o { write!(f, "o")?; }
-        if self.n { write!(f, "n")?; }
-        if self.d { write!(f, "d")?; }
-        if self.u { write!(f, "u")?; }
-        if self.e { write!(f, "e")?; }
-        if self.f { write!(f, "f")?; }
-        if self.s { write!(f, "s")?; }
-        if self.m { write!(f, "m")?; }
-        if self.x { write!(f, "x")?; }
+        if self.z {
+            write!(f, "z")?;
+        }
+        if self.o {
+            write!(f, "o")?;
+        }
+        if self.n {
+            write!(f, "n")?;
+        }
+        if self.d {
+            write!(f, "d")?;
+        }
+        if self.u {
+            write!(f, "u")?;
+        }
+        if self.e {
+            write!(f, "e")?;
+        }
+        if self.f {
+            write!(f, "f")?;
+        }
+        if self.s {
+            write!(f, "s")?;
+        }
+        if self.m {
+            write!(f, "m")?;
+        }
+        if self.x {
+            write!(f, "x")?;
+        }
         Ok(())
     }
 }
@@ -131,8 +159,16 @@ pub fn type_pk_k() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::K,
         modifiers: TypeModifiers {
-            z: false, o: true, n: true, d: true, u: true,
-            e: true,  f: false, s: true, m: true, x: false,
+            z: false,
+            o: true,
+            n: true,
+            d: true,
+            u: true,
+            e: true,
+            f: false,
+            s: true,
+            m: true,
+            x: false,
         },
     }
 }
@@ -142,8 +178,16 @@ pub fn type_pk_h() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::K,
         modifiers: TypeModifiers {
-            z: false, o: false, n: true, d: true, u: true,
-            e: true,  f: false, s: true, m: true, x: false,
+            z: false,
+            o: false,
+            n: true,
+            d: true,
+            u: true,
+            e: true,
+            f: false,
+            s: true,
+            m: true,
+            x: false,
         },
     }
 }
@@ -153,8 +197,16 @@ pub fn type_older() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: true,  o: false, n: false, d: false, u: false,
-            e: false, f: true,  s: false, m: true,  x: false,
+            z: true,
+            o: false,
+            n: false,
+            d: false,
+            u: false,
+            e: false,
+            f: true,
+            s: false,
+            m: true,
+            x: false,
         },
     }
 }
@@ -164,8 +216,16 @@ pub fn type_after() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: true,  o: false, n: false, d: false, u: false,
-            e: false, f: true,  s: false, m: true,  x: false,
+            z: true,
+            o: false,
+            n: false,
+            d: false,
+            u: false,
+            e: false,
+            f: true,
+            s: false,
+            m: true,
+            x: false,
         },
     }
 }
@@ -175,8 +235,16 @@ pub fn type_hash() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: false, o: true,  n: false, d: true,  u: true,
-            e: false, f: false, s: false, m: true,  x: false,
+            z: false,
+            o: true,
+            n: false,
+            d: true,
+            u: true,
+            e: false,
+            f: false,
+            s: false,
+            m: true,
+            x: false,
         },
     }
 }
@@ -186,8 +254,16 @@ pub fn type_true() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: true,  o: false, n: false, d: false, u: true,
-            e: false, f: true,  s: false, m: true,  x: false,
+            z: true,
+            o: false,
+            n: false,
+            d: false,
+            u: true,
+            e: false,
+            f: true,
+            s: false,
+            m: true,
+            x: false,
         },
     }
 }
@@ -197,8 +273,16 @@ pub fn type_false() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: true,  o: false, n: false, d: true,  u: true,
-            e: true,  f: false, s: false, m: true,  x: false,
+            z: true,
+            o: false,
+            n: false,
+            d: true,
+            u: true,
+            e: true,
+            f: false,
+            s: false,
+            m: true,
+            x: false,
         },
     }
 }
@@ -208,8 +292,16 @@ pub fn type_multi() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: false, o: false, n: true,  d: true,  u: true,
-            e: true,  f: false, s: true,  m: true,  x: false,
+            z: false,
+            o: false,
+            n: true,
+            d: true,
+            u: true,
+            e: true,
+            f: false,
+            s: true,
+            m: true,
+            x: false,
         },
     }
 }
@@ -219,8 +311,16 @@ pub fn type_multi_a() -> MiniscriptType {
     MiniscriptType {
         base: BaseType::B,
         modifiers: TypeModifiers {
-            z: false, o: false, n: true,  d: true,  u: true,
-            e: true,  f: false, s: true,  m: true,  x: false,
+            z: false,
+            o: false,
+            n: true,
+            d: true,
+            u: true,
+            e: true,
+            f: false,
+            s: true,
+            m: true,
+            x: false,
         },
     }
 }
@@ -240,12 +340,14 @@ pub fn type_and_v(x: &MiniscriptType, y: &MiniscriptType) -> Option<MiniscriptTy
             z: x.modifiers.z && y.modifiers.z,
             o: x.modifiers.z && y.modifiers.o || x.modifiers.o && y.modifiers.z,
             n: x.modifiers.n || (x.modifiers.z && y.modifiers.n),
-            d: false,  // and_v is never dissatisfiable
+            d: false, // and_v is never dissatisfiable
             u: y.modifiers.u,
             e: false,
-            f: true,   // X is V (forced) so the whole thing is forced
+            f: true, // X is V (forced) so the whole thing is forced
             s: x.modifiers.s || y.modifiers.s,
-            m: x.modifiers.m && y.modifiers.m && (x.modifiers.s || y.modifiers.s || !x.modifiers.e && !y.modifiers.e),
+            m: x.modifiers.m
+                && y.modifiers.m
+                && (x.modifiers.s || y.modifiers.s || !x.modifiers.e && !y.modifiers.e),
             x: x.modifiers.x || y.modifiers.x,
         },
     })
@@ -269,7 +371,9 @@ pub fn type_and_b(x: &MiniscriptType, y: &MiniscriptType) -> Option<MiniscriptTy
             e: x.modifiers.e && y.modifiers.e,
             f: x.modifiers.f && y.modifiers.f,
             s: x.modifiers.s || y.modifiers.s,
-            m: x.modifiers.m && y.modifiers.m && (x.modifiers.s || y.modifiers.s || !x.modifiers.e && !y.modifiers.e),
+            m: x.modifiers.m
+                && y.modifiers.m
+                && (x.modifiers.s || y.modifiers.s || !x.modifiers.e && !y.modifiers.e),
             x: x.modifiers.x || y.modifiers.x,
         },
     })
@@ -293,7 +397,11 @@ pub fn type_or_b(x: &MiniscriptType, y: &MiniscriptType) -> Option<MiniscriptTyp
             e: x.modifiers.e && y.modifiers.e,
             f: false,
             s: x.modifiers.s && y.modifiers.s,
-            m: x.modifiers.m && y.modifiers.m && x.modifiers.e && y.modifiers.e && (x.modifiers.s || y.modifiers.s),
+            m: x.modifiers.m
+                && y.modifiers.m
+                && x.modifiers.e
+                && y.modifiers.e
+                && (x.modifiers.s || y.modifiers.s),
             x: x.modifiers.x || y.modifiers.x,
         },
     })
@@ -355,7 +463,7 @@ pub fn type_or_i(x: &MiniscriptType, y: &MiniscriptType) -> Option<MiniscriptTyp
         return None;
     }
     match x.base {
-        BaseType::B | BaseType::K | BaseType::V => {},
+        BaseType::B | BaseType::K | BaseType::V => {}
         BaseType::W => return None,
     }
     Some(MiniscriptType {
@@ -592,7 +700,18 @@ mod tests {
 
     #[test]
     fn test_type_modifiers_display() {
-        let m = TypeModifiers { z: true, o: false, n: true, d: false, u: true, e: false, f: true, s: false, m: true, x: false };
+        let m = TypeModifiers {
+            z: true,
+            o: false,
+            n: true,
+            d: false,
+            u: true,
+            e: false,
+            f: true,
+            s: false,
+            m: true,
+            x: false,
+        };
         assert_eq!(format!("{}", m), "znufm");
     }
 

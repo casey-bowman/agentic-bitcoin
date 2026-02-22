@@ -205,7 +205,9 @@ impl AddressManager {
     /// `GETADDR_PERCENT`% of known addresses at random (using a simple
     /// deterministic selection for reproducibility).
     pub fn get_addr_response(&mut self, now: u64) -> Vec<(u64, SocketAddr)> {
-        let all: Vec<&AddressInfo> = self.addresses.values()
+        let all: Vec<&AddressInfo> = self
+            .addresses
+            .values()
             .filter(|a| {
                 // Skip stale addresses
                 now.saturating_sub(a.last_seen) < MAX_ADDRESS_AGE
@@ -217,7 +219,9 @@ impl AddressManager {
         }
 
         // Select GETADDR_PERCENT% of addresses, up to MAX_ADDR_RESPONSE
-        let target = (all.len() * GETADDR_PERCENT / 100).max(1).min(MAX_ADDR_RESPONSE);
+        let target = (all.len() * GETADDR_PERCENT / 100)
+            .max(1)
+            .min(MAX_ADDR_RESPONSE);
 
         // Simple deterministic selection: use counter to pick starting offset
         self.selection_counter = self.selection_counter.wrapping_add(1);
@@ -241,19 +245,31 @@ impl AddressManager {
         let min_retry_delay = 600u64; // Don't retry within 10 minutes
 
         // Collect tried addresses first, then new
-        let mut tried: Vec<&AddressInfo> = self.addresses.values()
+        let mut tried: Vec<&AddressInfo> = self
+            .addresses
+            .values()
             .filter(|a| a.is_tried && now.saturating_sub(a.last_seen) < MAX_ADDRESS_AGE)
             .filter(|a| a.last_success == 0 || now.saturating_sub(a.last_success) > min_retry_delay)
             .collect();
 
-        let mut new: Vec<&AddressInfo> = self.addresses.values()
+        let mut new: Vec<&AddressInfo> = self
+            .addresses
+            .values()
             .filter(|a| !a.is_tried && now.saturating_sub(a.last_seen) < MAX_ADDRESS_AGE)
             .filter(|a| a.attempts == 0 || now.saturating_sub(a.last_seen) > min_retry_delay)
             .collect();
 
         // Sort by fewest attempts, then most recently seen
-        tried.sort_by(|a, b| a.attempts.cmp(&b.attempts).then(b.last_seen.cmp(&a.last_seen)));
-        new.sort_by(|a, b| a.attempts.cmp(&b.attempts).then(b.last_seen.cmp(&a.last_seen)));
+        tried.sort_by(|a, b| {
+            a.attempts
+                .cmp(&b.attempts)
+                .then(b.last_seen.cmp(&a.last_seen))
+        });
+        new.sort_by(|a, b| {
+            a.attempts
+                .cmp(&b.attempts)
+                .then(b.last_seen.cmp(&a.last_seen))
+        });
 
         let mut result = Vec::with_capacity(count);
 
@@ -273,7 +289,9 @@ impl AddressManager {
 
     /// Remove all addresses associated with a specific source IP.
     pub fn remove_by_source(&mut self, source: &IpAddr) {
-        let to_remove: Vec<SocketAddr> = self.addresses.iter()
+        let to_remove: Vec<SocketAddr> = self
+            .addresses
+            .iter()
             .filter(|(_, info)| info.source == *source)
             .map(|(addr, _)| *addr)
             .collect();
@@ -291,7 +309,9 @@ impl AddressManager {
 
     /// Expire addresses older than `MAX_ADDRESS_AGE`.
     pub fn expire_old(&mut self, now: u64) {
-        let to_remove: Vec<SocketAddr> = self.addresses.iter()
+        let to_remove: Vec<SocketAddr> = self
+            .addresses
+            .iter()
             .filter(|(_, info)| now.saturating_sub(info.last_seen) >= MAX_ADDRESS_AGE)
             .map(|(addr, _)| *addr)
             .collect();
@@ -315,7 +335,9 @@ impl AddressManager {
 
     /// Evict the oldest address from the new table.
     fn evict_oldest_new(&mut self, _now: u64) {
-        let oldest = self.addresses.iter()
+        let oldest = self
+            .addresses
+            .iter()
             .filter(|(_, info)| !info.is_tried)
             .min_by_key(|(_, info)| info.last_seen)
             .map(|(addr, _)| *addr);
@@ -328,7 +350,9 @@ impl AddressManager {
 
     /// Evict the oldest address from the tried table (move it back to new).
     fn evict_oldest_tried(&mut self, _now: u64) {
-        let oldest = self.addresses.iter()
+        let oldest = self
+            .addresses
+            .iter()
             .filter(|(_, info)| info.is_tried)
             .min_by_key(|(_, info)| info.last_success)
             .map(|(addr, _)| *addr);
@@ -474,8 +498,10 @@ mod tests {
         let selected = mgr.select_for_connection(3, 3000);
         assert_eq!(selected.len(), 3);
         // First two should be from tried table
-        assert!(selected.contains(&addr(1, 2, 3, 1, 8333))
-            || selected.contains(&addr(1, 2, 3, 2, 8333)));
+        assert!(
+            selected.contains(&addr(1, 2, 3, 1, 8333))
+                || selected.contains(&addr(1, 2, 3, 2, 8333))
+        );
     }
 
     #[test]

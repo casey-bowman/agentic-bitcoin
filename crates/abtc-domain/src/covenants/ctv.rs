@@ -136,11 +136,7 @@ mod tests {
     use crate::primitives::{Amount, OutPoint, TxIn, TxOut, Txid};
     use crate::script::Script;
 
-    fn make_simple_tx(
-        num_inputs: usize,
-        outputs: Vec<TxOut>,
-        lock_time: u32,
-    ) -> Transaction {
+    fn make_simple_tx(num_inputs: usize, outputs: Vec<TxOut>, lock_time: u32) -> Transaction {
         let inputs: Vec<TxIn> = (0..num_inputs)
             .map(|i| {
                 let mut txid_bytes = [0u8; 32];
@@ -160,7 +156,10 @@ mod tests {
     fn test_ctv_hash_deterministic() {
         let tx = make_simple_tx(
             1,
-            vec![TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x51]))],
+            vec![TxOut::new(
+                Amount::from_sat(100_000),
+                Script::from_bytes(vec![0x51]),
+            )],
             0,
         );
         let h1 = compute_ctv_hash(&tx, 0);
@@ -172,12 +171,18 @@ mod tests {
     fn test_ctv_hash_changes_with_outputs() {
         let tx1 = make_simple_tx(
             1,
-            vec![TxOut::new(Amount::from_sat(100_000), Script::from_bytes(vec![0x51]))],
+            vec![TxOut::new(
+                Amount::from_sat(100_000),
+                Script::from_bytes(vec![0x51]),
+            )],
             0,
         );
         let tx2 = make_simple_tx(
             1,
-            vec![TxOut::new(Amount::from_sat(200_000), Script::from_bytes(vec![0x51]))],
+            vec![TxOut::new(
+                Amount::from_sat(200_000),
+                Script::from_bytes(vec![0x51]),
+            )],
             0,
         );
         assert_ne!(compute_ctv_hash(&tx1, 0), compute_ctv_hash(&tx2, 0));
@@ -266,13 +271,21 @@ mod tests {
         let outputs = vec![TxOut::new(Amount::from_sat(50_000), Script::new())];
         let tx1 = Transaction::new(
             2,
-            vec![TxIn::new(OutPoint::new(Txid::zero(), 0), Script::new(), 0xfffffffe)],
+            vec![TxIn::new(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+                0xfffffffe,
+            )],
             outputs.clone(),
             0,
         );
         let tx2 = Transaction::new(
             2,
-            vec![TxIn::new(OutPoint::new(Txid::zero(), 0), Script::new(), 0x00000001)],
+            vec![TxIn::new(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+                0x00000001,
+            )],
             outputs,
             0,
         );
@@ -281,11 +294,7 @@ mod tests {
 
     #[test]
     fn test_ctv_hash_nonzero() {
-        let tx = make_simple_tx(
-            1,
-            vec![TxOut::new(Amount::from_sat(1), Script::new())],
-            0,
-        );
+        let tx = make_simple_tx(1, vec![TxOut::new(Amount::from_sat(1), Script::new())], 0);
         let hash = compute_ctv_hash(&tx, 0);
         assert_ne!(hash, Hash256::zero());
     }
@@ -295,9 +304,18 @@ mod tests {
         let tx = make_simple_tx(
             1,
             vec![
-                TxOut::new(Amount::from_sat(60_000), Script::from_bytes(vec![0x76, 0xa9])),
-                TxOut::new(Amount::from_sat(30_000), Script::from_bytes(vec![0x00, 0x14])),
-                TxOut::new(Amount::from_sat(10_000), Script::from_bytes(vec![0x6a, 0x04])),
+                TxOut::new(
+                    Amount::from_sat(60_000),
+                    Script::from_bytes(vec![0x76, 0xa9]),
+                ),
+                TxOut::new(
+                    Amount::from_sat(30_000),
+                    Script::from_bytes(vec![0x00, 0x14]),
+                ),
+                TxOut::new(
+                    Amount::from_sat(10_000),
+                    Script::from_bytes(vec![0x6a, 0x04]),
+                ),
             ],
             0,
         );
@@ -308,9 +326,18 @@ mod tests {
         let tx_swapped = make_simple_tx(
             1,
             vec![
-                TxOut::new(Amount::from_sat(30_000), Script::from_bytes(vec![0x00, 0x14])),
-                TxOut::new(Amount::from_sat(60_000), Script::from_bytes(vec![0x76, 0xa9])),
-                TxOut::new(Amount::from_sat(10_000), Script::from_bytes(vec![0x6a, 0x04])),
+                TxOut::new(
+                    Amount::from_sat(30_000),
+                    Script::from_bytes(vec![0x00, 0x14]),
+                ),
+                TxOut::new(
+                    Amount::from_sat(60_000),
+                    Script::from_bytes(vec![0x76, 0xa9]),
+                ),
+                TxOut::new(
+                    Amount::from_sat(10_000),
+                    Script::from_bytes(vec![0x6a, 0x04]),
+                ),
             ],
             0,
         );

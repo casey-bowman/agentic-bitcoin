@@ -99,10 +99,7 @@ impl From<ConnectBlockError> for ChainStateError {
 #[derive(Debug)]
 pub enum ProcessBlockResult {
     /// The block extended the active chain (normal case).
-    Connected {
-        hash: BlockHash,
-        height: u32,
-    },
+    Connected { hash: BlockHash, height: u32 },
     /// The block triggered a reorganisation to a better chain.
     Reorged {
         hash: BlockHash,
@@ -113,14 +110,9 @@ pub enum ProcessBlockResult {
         connected: u32,
     },
     /// The block was accepted but is on a side chain (less work than active).
-    SideChain {
-        hash: BlockHash,
-        height: u32,
-    },
+    SideChain { hash: BlockHash, height: u32 },
     /// The block was already known.
-    AlreadyKnown {
-        hash: BlockHash,
-    },
+    AlreadyKnown { hash: BlockHash },
 }
 
 // ── Chain state ─────────────────────────────────────────────────────
@@ -235,8 +227,13 @@ impl ChainState {
     ) -> Result<ProcessBlockResult, ChainStateError> {
         let block = self.blocks.get(&hash).unwrap();
 
-        let result =
-            connect_block(block, height, &self.utxo_set, &self.params, self.verify_scripts)?;
+        let result = connect_block(
+            block,
+            height,
+            &self.utxo_set,
+            &self.params,
+            self.verify_scripts,
+        )?;
 
         self.utxo_set.apply_connect(&result);
         self.undo_data.insert(hash, result);
@@ -261,8 +258,7 @@ impl ChainState {
         let new_chain = self.index.get_ancestor_chain(&new_tip_hash);
 
         // Build sets for O(1) lookup.
-        let old_set: std::collections::HashSet<BlockHash> =
-            old_chain.iter().copied().collect();
+        let old_set: std::collections::HashSet<BlockHash> = old_chain.iter().copied().collect();
 
         // Find fork point: walk new chain from genesis-end and find first hash in old chain.
         // Note: get_ancestor_chain returns [tip, ..., genesis], so we reverse.
@@ -273,8 +269,11 @@ impl ChainState {
             .copied()
             .ok_or(ChainStateError::NoForkPoint)?;
 
-        let fork_height = self.index.get(&fork_hash)
-            .ok_or(ChainStateError::CorruptedIndex(fork_hash))?.height;
+        let fork_height = self
+            .index
+            .get(&fork_hash)
+            .ok_or(ChainStateError::CorruptedIndex(fork_hash))?
+            .height;
 
         // Blocks to disconnect: from current tip back to (but not including) fork point.
         let to_disconnect: Vec<BlockHash> = old_chain
@@ -311,8 +310,11 @@ impl ChainState {
             self.tip = if i + 1 < to_disconnect.len() {
                 // Next block to disconnect is the new temporary tip.
                 // But we actually just set tip to fork after the loop.
-                self.index.get(old_hash)
-                    .ok_or(ChainStateError::CorruptedIndex(*old_hash))?.header.prev_block_hash
+                self.index
+                    .get(old_hash)
+                    .ok_or(ChainStateError::CorruptedIndex(*old_hash))?
+                    .header
+                    .prev_block_hash
             } else {
                 fork_hash
             };
@@ -323,8 +325,11 @@ impl ChainState {
 
         // Phase 2: Connect new blocks (fork → new tip).
         for new_hash in &to_connect {
-            let height = self.index.get(new_hash)
-                .ok_or(ChainStateError::CorruptedIndex(*new_hash))?.height;
+            let height = self
+                .index
+                .get(new_hash)
+                .ok_or(ChainStateError::CorruptedIndex(*new_hash))?
+                .height;
             let block = self
                 .blocks
                 .get(new_hash)

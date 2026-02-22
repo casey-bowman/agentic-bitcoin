@@ -16,7 +16,9 @@
 //! - BIP44: <https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki>
 
 use crate::crypto::hashing;
-use crate::wallet::keys::{KeyError, PrivateKey, PublicKey, base58check_encode, base58check_decode};
+use crate::wallet::keys::{
+    base58check_decode, base58check_encode, KeyError, PrivateKey, PublicKey,
+};
 use hmac::{Hmac, Mac};
 use secp256k1::{Secp256k1, SecretKey};
 use sha2::Sha512;
@@ -110,7 +112,9 @@ impl std::fmt::Display for HdError {
         match self {
             HdError::InvalidSeedLength => write!(f, "seed must be 16-64 bytes"),
             HdError::InvalidChildKey => write!(f, "derived key is invalid (try next index)"),
-            HdError::HardenedFromPublic => write!(f, "cannot do hardened derivation from public key"),
+            HdError::HardenedFromPublic => {
+                write!(f, "cannot do hardened derivation from public key")
+            }
             HdError::InvalidExtendedKey(msg) => write!(f, "invalid extended key: {}", msg),
             HdError::KeyError(e) => write!(f, "key error: {}", e),
         }
@@ -137,13 +141,13 @@ impl ExtendedPrivateKey {
             return Err(HdError::InvalidSeedLength);
         }
 
-        let mut mac = HmacSha512::new_from_slice(b"Bitcoin seed")
-            .expect("HMAC can take any key size");
+        let mut mac =
+            HmacSha512::new_from_slice(b"Bitcoin seed").expect("HMAC can take any key size");
         mac.update(seed);
         let result = mac.finalize().into_bytes();
 
-        let secret_key = SecretKey::from_slice(&result[..32])
-            .map_err(|_| HdError::InvalidChildKey)?;
+        let secret_key =
+            SecretKey::from_slice(&result[..32]).map_err(|_| HdError::InvalidChildKey)?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&result[32..]);
 
@@ -164,8 +168,8 @@ impl ExtendedPrivateKey {
         let secp = Secp256k1::new();
         let public_key = secp256k1::PublicKey::from_secret_key(&secp, &self.secret_key);
 
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .expect("HMAC can take any key size");
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).expect("HMAC can take any key size");
 
         if index >= HARDENED_OFFSET {
             // Hardened child: HMAC-SHA512(key = chain_code, data = 0x00 || secret_key || index)
@@ -180,9 +184,10 @@ impl ExtendedPrivateKey {
         let result = mac.finalize().into_bytes();
 
         // Parse IL as a 256-bit big-endian integer and add to parent key (mod n).
-        let il = SecretKey::from_slice(&result[..32])
-            .map_err(|_| HdError::InvalidChildKey)?;
-        let child_key = self.secret_key.add_tweak(&il.into())
+        let il = SecretKey::from_slice(&result[..32]).map_err(|_| HdError::InvalidChildKey)?;
+        let child_key = self
+            .secret_key
+            .add_tweak(&il.into())
             .map_err(|_| HdError::InvalidChildKey)?;
 
         let mut child_chain_code = [0u8; 32];
@@ -224,7 +229,11 @@ impl ExtendedPrivateKey {
         change: u32,
         address_index: u32,
     ) -> Result<Self, HdError> {
-        let coin_type = if self.mainnet { COIN_TYPE_BITCOIN } else { COIN_TYPE_TESTNET };
+        let coin_type = if self.mainnet {
+            COIN_TYPE_BITCOIN
+        } else {
+            COIN_TYPE_TESTNET
+        };
         self.derive_path(&[
             BIP44_PURPOSE + HARDENED_OFFSET,
             coin_type + HARDENED_OFFSET,
@@ -251,8 +260,7 @@ impl ExtendedPrivateKey {
     /// Get the underlying private key.
     pub fn private_key(&self) -> PrivateKey {
         let bytes = self.secret_key.secret_bytes();
-        PrivateKey::from_bytes(&bytes, true, self.mainnet)
-            .expect("extended key always valid")
+        PrivateKey::from_bytes(&bytes, true, self.mainnet).expect("extended key always valid")
     }
 
     /// Get the corresponding public key.
@@ -262,7 +270,11 @@ impl ExtendedPrivateKey {
 
     /// Serialise as xprv/tprv (Base58Check, 78 bytes payload).
     pub fn to_base58(&self) -> String {
-        let version = if self.mainnet { XPRV_VERSION } else { TPRV_VERSION };
+        let version = if self.mainnet {
+            XPRV_VERSION
+        } else {
+            TPRV_VERSION
+        };
         let mut data = Vec::with_capacity(78);
         data.extend_from_slice(&version);
         data.push(self.depth);
@@ -279,7 +291,8 @@ impl ExtendedPrivateKey {
         let data = base58check_decode(s).map_err(|e| HdError::InvalidExtendedKey(e.to_string()))?;
         if data.len() != 78 {
             return Err(HdError::InvalidExtendedKey(format!(
-                "expected 78 bytes, got {}", data.len()
+                "expected 78 bytes, got {}",
+                data.len()
             )));
         }
 
@@ -303,7 +316,9 @@ impl ExtendedPrivateKey {
 
         // data[45] should be 0x00 (padding)
         if data[45] != 0x00 {
-            return Err(HdError::InvalidExtendedKey("missing private key padding".into()));
+            return Err(HdError::InvalidExtendedKey(
+                "missing private key padding".into(),
+            ));
         }
 
         let secret_key = SecretKey::from_slice(&data[46..78])
@@ -368,18 +383,19 @@ impl ExtendedPublicKey {
 
         let secp = Secp256k1::new();
 
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .expect("HMAC can take any key size");
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).expect("HMAC can take any key size");
         mac.update(&self.public_key.serialize());
         mac.update(&index.to_be_bytes());
 
         let result = mac.finalize().into_bytes();
 
         // IL is treated as a tweak to the parent public key.
-        let il = SecretKey::from_slice(&result[..32])
-            .map_err(|_| HdError::InvalidChildKey)?;
+        let il = SecretKey::from_slice(&result[..32]).map_err(|_| HdError::InvalidChildKey)?;
 
-        let child_pk = self.public_key.add_exp_tweak(&secp, &il.into())
+        let child_pk = self
+            .public_key
+            .add_exp_tweak(&secp, &il.into())
             .map_err(|_| HdError::InvalidChildKey)?;
 
         let mut child_chain_code = [0u8; 32];
@@ -410,13 +426,16 @@ impl ExtendedPublicKey {
 
     /// Get the compressed public key.
     pub fn public_key(&self) -> PublicKey {
-        PublicKey::from_bytes(&self.public_key.serialize())
-            .expect("valid secp256k1 key")
+        PublicKey::from_bytes(&self.public_key.serialize()).expect("valid secp256k1 key")
     }
 
     /// Serialise as xpub/tpub (Base58Check, 78 bytes payload).
     pub fn to_base58(&self) -> String {
-        let version = if self.mainnet { XPUB_VERSION } else { TPUB_VERSION };
+        let version = if self.mainnet {
+            XPUB_VERSION
+        } else {
+            TPUB_VERSION
+        };
         let mut data = Vec::with_capacity(78);
         data.extend_from_slice(&version);
         data.push(self.depth);
@@ -432,7 +451,8 @@ impl ExtendedPublicKey {
         let data = base58check_decode(s).map_err(|e| HdError::InvalidExtendedKey(e.to_string()))?;
         if data.len() != 78 {
             return Err(HdError::InvalidExtendedKey(format!(
-                "expected 78 bytes, got {}", data.len()
+                "expected 78 bytes, got {}",
+                data.len()
             )));
         }
 
@@ -489,7 +509,9 @@ impl ExtendedPublicKey {
 pub fn parse_derivation_path(path: &str) -> Result<Vec<u32>, HdError> {
     let path = path.trim();
     if !path.starts_with('m') && !path.starts_with('M') {
-        return Err(HdError::InvalidExtendedKey("path must start with 'm'".into()));
+        return Err(HdError::InvalidExtendedKey(
+            "path must start with 'm'".into(),
+        ));
     }
 
     let parts: Vec<&str> = path.split('/').collect();
@@ -499,11 +521,12 @@ pub fn parse_derivation_path(path: &str) -> Result<Vec<u32>, HdError> {
 
     let mut indices = Vec::with_capacity(parts.len() - 1);
     for part in &parts[1..] {
-        let (num_str, hardened) = if part.ends_with('\'') || part.ends_with('h') || part.ends_with('H') {
-            (&part[..part.len() - 1], true)
-        } else {
-            (*part, false)
-        };
+        let (num_str, hardened) =
+            if part.ends_with('\'') || part.ends_with('h') || part.ends_with('H') {
+                (&part[..part.len() - 1], true)
+            } else {
+                (*part, false)
+            };
 
         let index: u32 = num_str.parse().map_err(|_| {
             HdError::InvalidExtendedKey(format!("invalid path component: {}", part))
@@ -558,7 +581,10 @@ mod tests {
         assert_eq!(child.depth(), 1);
 
         // Different from master.
-        assert_ne!(master.private_key().secret_bytes(), child.private_key().secret_bytes());
+        assert_ne!(
+            master.private_key().secret_bytes(),
+            child.private_key().secret_bytes()
+        );
     }
 
     #[test]
@@ -569,7 +595,10 @@ mod tests {
 
         // Different from normal child at index 0.
         let child_n = master.derive_child(0).unwrap();
-        assert_ne!(child_h.private_key().secret_bytes(), child_n.private_key().secret_bytes());
+        assert_ne!(
+            child_h.private_key().secret_bytes(),
+            child_n.private_key().secret_bytes()
+        );
     }
 
     #[test]
@@ -589,7 +618,10 @@ mod tests {
 
         // Different addresses should produce different keys.
         let key2 = master.derive_bip44(0, 0, 1).unwrap();
-        assert_ne!(key.private_key().secret_bytes(), key2.private_key().secret_bytes());
+        assert_ne!(
+            key.private_key().secret_bytes(),
+            key2.private_key().secret_bytes()
+        );
     }
 
     #[test]
@@ -624,7 +656,10 @@ mod tests {
         assert!(encoded.starts_with("xprv"));
 
         let decoded = ExtendedPrivateKey::from_base58(&encoded).unwrap();
-        assert_eq!(master.private_key().secret_bytes(), decoded.private_key().secret_bytes());
+        assert_eq!(
+            master.private_key().secret_bytes(),
+            decoded.private_key().secret_bytes()
+        );
         assert_eq!(master.chain_code(), decoded.chain_code());
         assert_eq!(master.depth(), decoded.depth());
     }
@@ -697,7 +732,10 @@ mod tests {
         let acct1 = master.derive_bip44(1, 0, 0).unwrap();
 
         // Different accounts produce different keys.
-        assert_ne!(acct0.private_key().secret_bytes(), acct1.private_key().secret_bytes());
+        assert_ne!(
+            acct0.private_key().secret_bytes(),
+            acct1.private_key().secret_bytes()
+        );
     }
 
     #[test]
@@ -707,7 +745,10 @@ mod tests {
         let receive = master.derive_bip44(0, 0, 0).unwrap();
         let change = master.derive_bip44(0, 1, 0).unwrap();
 
-        assert_ne!(receive.private_key().secret_bytes(), change.private_key().secret_bytes());
+        assert_ne!(
+            receive.private_key().secret_bytes(),
+            change.private_key().secret_bytes()
+        );
     }
 
     #[test]
@@ -715,11 +756,13 @@ mod tests {
         let master = ExtendedPrivateKey::from_seed(&test_seed(), true).unwrap();
 
         // Derive account key privately (hardened).
-        let account = master.derive_path(&[
-            44 + HARDENED_OFFSET,
-            0 + HARDENED_OFFSET,
-            0 + HARDENED_OFFSET,
-        ]).unwrap();
+        let account = master
+            .derive_path(&[
+                44 + HARDENED_OFFSET,
+                0 + HARDENED_OFFSET,
+                0 + HARDENED_OFFSET,
+            ])
+            .unwrap();
 
         // From the account's xpub, derive receive addresses (non-hardened).
         let account_pub = account.to_extended_public_key();

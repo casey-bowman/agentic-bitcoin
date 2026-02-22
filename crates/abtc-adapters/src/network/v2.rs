@@ -34,9 +34,7 @@
 //! ElligatorSwift (64 bytes) to make the handshake indistinguishable
 //! from random.  We start with compressed keys for simplicity.
 
-use abtc_domain::crypto::bip324::{
-    self, FSChaCha20, FSChaCha20Poly1305, SessionKeys, V2MessageId,
-};
+use abtc_domain::crypto::bip324::{self, FSChaCha20, FSChaCha20Poly1305, SessionKeys, V2MessageId};
 
 // ═══════════════════════════════════════════════════════════════
 // Handshake state machine
@@ -162,11 +160,10 @@ impl V2Transport {
     /// received from the peer.  After this call, the transport
     /// transitions to `Established` and all subsequent messages
     /// must use `encrypt_message()` / `decrypt_message()`.
-    pub fn complete_handshake(
-        &mut self,
-        peer_pubkey_bytes: &[u8],
-    ) -> Result<(), V2Error> {
-        let our_secret = self.our_secret.take()
+    pub fn complete_handshake(&mut self, peer_pubkey_bytes: &[u8]) -> Result<(), V2Error> {
+        let our_secret = self
+            .our_secret
+            .take()
             .ok_or_else(|| V2Error::KeyExchangeFailed("no secret key".into()))?;
 
         let peer_pubkey = secp256k1::PublicKey::from_slice(peer_pubkey_bytes)
@@ -177,7 +174,8 @@ impl V2Transport {
 
         // Derive session keys.  The "initiator" is whoever initiated the
         // TCP connection (outbound peer).
-        let our_pk_bytes = self.our_pubkey
+        let our_pk_bytes = self
+            .our_pubkey
             .ok_or_else(|| V2Error::KeyExchangeFailed("no pubkey".into()))?
             .serialize();
 
@@ -192,11 +190,19 @@ impl V2Transport {
         // Set up ciphers.
         // The initiator sends with initiator_key and receives with responder_key.
         let (send_key, recv_key, send_len_key, recv_len_key) = if self.is_initiator {
-            (keys.initiator_key, keys.responder_key,
-             keys.initiator_length_key, keys.responder_length_key)
+            (
+                keys.initiator_key,
+                keys.responder_key,
+                keys.initiator_length_key,
+                keys.responder_length_key,
+            )
         } else {
-            (keys.responder_key, keys.initiator_key,
-             keys.responder_length_key, keys.initiator_length_key)
+            (
+                keys.responder_key,
+                keys.initiator_key,
+                keys.responder_length_key,
+                keys.initiator_length_key,
+            )
         };
 
         self.send_cipher = Some(FSChaCha20Poly1305::new(send_key));
@@ -221,11 +227,7 @@ impl V2Transport {
     ///
     /// The caller is responsible for writing the returned bytes to the
     /// TCP stream.
-    pub fn encrypt_message(
-        &mut self,
-        command: &str,
-        payload: &[u8],
-    ) -> Result<Vec<u8>, V2Error> {
+    pub fn encrypt_message(&mut self, command: &str, payload: &[u8]) -> Result<Vec<u8>, V2Error> {
         if self.state != HandshakeState::Established {
             return Err(V2Error::HandshakeIncomplete);
         }
@@ -300,17 +302,15 @@ impl V2Transport {
     /// (including the 16-byte AEAD tag at the end).
     ///
     /// Returns `(command, payload)` on success.
-    pub fn decrypt_message(
-        &mut self,
-        ciphertext: &[u8],
-    ) -> Result<(String, Vec<u8>), V2Error> {
+    pub fn decrypt_message(&mut self, ciphertext: &[u8]) -> Result<(String, Vec<u8>), V2Error> {
         if self.state != HandshakeState::Established {
             return Err(V2Error::HandshakeIncomplete);
         }
 
         let aead = self.recv_cipher.as_mut().unwrap();
 
-        let plaintext = aead.decrypt(b"", ciphertext)
+        let plaintext = aead
+            .decrypt(b"", ciphertext)
             .ok_or(V2Error::DecryptionFailed)?;
 
         if plaintext.len() < 2 {
@@ -387,7 +387,9 @@ mod tests {
         assert_eq!(initiator.session_id(), responder.session_id());
 
         // Initiator sends a message → responder decrypts it
-        let wire = initiator.encrypt_message("ping", &42u64.to_le_bytes()).unwrap();
+        let wire = initiator
+            .encrypt_message("ping", &42u64.to_le_bytes())
+            .unwrap();
 
         // Split into length prefix and content
         let mut length_bytes: [u8; 3] = [wire[0], wire[1], wire[2]];
@@ -446,7 +448,9 @@ mod tests {
         responder.complete_handshake(&init_pk).unwrap();
 
         // "cmpctblock" has no short ID → falls back to 12-byte ASCII
-        let wire = initiator.encrypt_message("cmpctblock", b"compact_data").unwrap();
+        let wire = initiator
+            .encrypt_message("cmpctblock", b"compact_data")
+            .unwrap();
         let mut len: [u8; 3] = [wire[0], wire[1], wire[2]];
         responder.decrypt_length(&mut len).unwrap();
         let (cmd, data) = responder.decrypt_message(&wire[3..]).unwrap();
@@ -498,7 +502,8 @@ mod tests {
 
             let mut len: [u8; 3] = [wire[0], wire[1], wire[2]];
             let _content_len = responder.decrypt_length(&mut len).unwrap();
-            let (cmd, data) = responder.decrypt_message(&wire[3..])
+            let (cmd, data) = responder
+                .decrypt_message(&wire[3..])
                 .expect(&format!("decrypt failed at message {}", i));
 
             assert_eq!(cmd, "ping");
@@ -566,8 +571,18 @@ mod tests {
         responder.complete_handshake(&init_pk).unwrap();
 
         let commands = [
-            "addr", "block", "getdata", "getheaders", "headers",
-            "inv", "ping", "pong", "tx", "getblocks", "sendheaders", "version",
+            "addr",
+            "block",
+            "getdata",
+            "getheaders",
+            "headers",
+            "inv",
+            "ping",
+            "pong",
+            "tx",
+            "getblocks",
+            "sendheaders",
+            "version",
         ];
 
         for cmd in commands {
