@@ -10,7 +10,7 @@ resolver = "2"
 
 [package]
 name = "agentic-bitcoin"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A from-scratch reimplementation of Bitcoin Core in Rust with hexagonal architecture"
 license = "MIT"
@@ -27,11 +27,11 @@ name = "agentic_bitcoin"
 path = "src/lib.rs"
 
 [dependencies]
-abtc-domain = { path = "crates/abtc-domain", version = "0.1.0" }
-abtc-ports = { path = "crates/abtc-ports", version = "0.1.0" }
-abtc-adapters = { path = "crates/abtc-adapters", version = "0.1.0" }
-abtc-application = { path = "crates/abtc-application", version = "0.1.0" }
-abtc-infrastructure = { path = "crates/abtc-infrastructure", version = "0.1.0" }
+abtc-domain = { path = "crates/abtc-domain", version = "0.2.0" }
+abtc-ports = { path = "crates/abtc-ports", version = "0.2.0" }
+abtc-adapters = { path = "crates/abtc-adapters", version = "0.2.0" }
+abtc-application = { path = "crates/abtc-application", version = "0.2.0" }
+abtc-infrastructure = { path = "crates/abtc-infrastructure", version = "0.2.0" }
 tokio = { version = "1.35", features = ["full"] }
 
 [[bin]]

@@ -1,6 +1,6 @@
 [package]
 name = "abtc-ports"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Trait interfaces (ports) for Agentic-Bitcoin storage, mempool, wallet, mining, network, and RPC"
 license = "MIT"
@@ -12,7 +12,7 @@ authors = ["Casey Bowman <case.bowman@gmail.com>", "Claude Opus 4.6"]
 rust-version = "1.84"
 
 [dependencies]
-abtc-domain = { path = "../abtc-domain", version = "0.1.0" }
+abtc-domain = { path = "../abtc-domain", version = "0.2.0" }
 async-trait = "0.1"
 thiserror = "1.0"
 serde_json = "1.0"

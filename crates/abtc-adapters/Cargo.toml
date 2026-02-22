@@ -1,6 +1,6 @@
 [package]
 name = "abtc-adapters"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "In-memory adapter implementations for Agentic-Bitcoin port traits"
 license = "MIT"
@@ -16,8 +16,8 @@ default = []
 rocksdb-storage = ["rocksdb"]
 
 [dependencies]
-abtc-domain = { path = "../abtc-domain", version = "0.1.0" }
-abtc-ports = { path = "../abtc-ports", version = "0.1.0" }
+abtc-domain = { path = "../abtc-domain", version = "0.2.0" }
+abtc-ports = { path = "../abtc-ports", version = "0.2.0" }
 tokio = { version = "1.35", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
