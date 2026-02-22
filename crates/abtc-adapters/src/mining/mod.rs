@@ -152,7 +152,7 @@ impl BlockTemplateProvider for SimpleMiner {
         let coinbase_tx = Transaction::coinbase(
             height,
             coinbase_script.clone(),
-            vec![TxOut::new(coinbase_reward, Script::new())],
+            vec![TxOut::new(coinbase_reward, coinbase_script.clone())],
         );
 
         // Assemble transactions: coinbase first, then mempool

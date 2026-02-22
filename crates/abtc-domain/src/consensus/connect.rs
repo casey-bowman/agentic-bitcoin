@@ -17,7 +17,7 @@
 use crate::consensus::params::ConsensusParams;
 use crate::consensus::rules::COINBASE_MATURITY;
 use crate::consensus::validation::ValidationError;
-use crate::crypto::signing::TransactionSignatureChecker;
+use crate::crypto::signing::{TransactionSignatureChecker, SpentOutput};
 use crate::primitives::{Amount, Block, OutPoint, TxOut};
 use crate::script::{verify_script_with_witness, ScriptFlags};
 
@@ -94,6 +94,8 @@ pub enum ConnectBlockError {
     ConsensusError(ValidationError),
     /// An output is being double-spent within the same block.
     DoubleSpendInBlock(OutPoint),
+    /// Signet block validation failed (BIP325).
+    SignetValidationFailed(String),
 }
 
 impl std::fmt::Display for ConnectBlockError {
@@ -136,6 +138,9 @@ impl std::fmt::Display for ConnectBlockError {
             ConnectBlockError::DoubleSpendInBlock(op) => {
                 write!(f, "double-spend within block: {}:{}", op.txid, op.vout)
             }
+            ConnectBlockError::SignetValidationFailed(reason) => {
+                write!(f, "signet validation failed: {}", reason)
+            }
         }
     }
 }
@@ -175,6 +180,16 @@ pub fn connect_block(
     // Step 0: Non-contextual validation
     check_block_header(&block.header, params)?;
     check_block(block, params)?;
+
+    // Step 0b: Signet validation (BIP325)
+    if let Some(ref challenge_bytes) = params.signet_challenge {
+        use crate::consensus::signet;
+        use crate::script::Script;
+
+        let challenge = Script::from_bytes(challenge_bytes.clone());
+        signet::validate_signet_block(block, &challenge)
+            .map_err(|e| ConnectBlockError::SignetValidationFailed(e.to_string()))?;
+    }
 
     // Track UTXOs created within this block (for transactions spending
     // outputs created earlier in the same block).
@@ -233,10 +248,54 @@ pub fn connect_block(
 
                 // Verify script
                 if verify_scripts {
-                    let checker = if input.witness.is_empty() {
-                        TransactionSignatureChecker::new(tx, in_idx, utxo.output.value)
+                    // Choose the correct signature checker based on the witness version
+                    // encoded in the scriptPubKey (not by checking witness emptiness).
+                    let spk_bytes = utxo.output.script_pubkey.as_bytes();
+                    let witness_version = if spk_bytes.len() >= 2 {
+                        // Witness programs: OP_0..OP_16 followed by push of 2..40 bytes
+                        match spk_bytes[0] {
+                            0x00 => Some(0),                  // witness v0
+                            0x51..=0x60 => Some(spk_bytes[0] - 0x50), // witness v1..v16
+                            _ => None,                        // not a witness program
+                        }
                     } else {
-                        TransactionSignatureChecker::new_witness_v0(tx, in_idx, utxo.output.value)
+                        None
+                    };
+
+                    let checker = match witness_version {
+                        Some(1) => {
+                            // Taproot (BIP341): collect all spent outputs for this tx
+                            let spent_outputs: Vec<SpentOutput> = tx
+                                .inputs
+                                .iter()
+                                .map(|inp| {
+                                    let so_utxo = block_utxos
+                                        .get(&inp.previous_output)
+                                        .cloned()
+                                        .or_else(|| utxo_view.get_utxo(&inp.previous_output))
+                                        .or_else(|| spent.get(&inp.previous_output).cloned());
+                                    match so_utxo {
+                                        Some(u) => SpentOutput {
+                                            amount: u.output.value,
+                                            script_pubkey: u.output.script_pubkey.clone(),
+                                        },
+                                        None => SpentOutput {
+                                            amount: Amount::from_sat(0),
+                                            script_pubkey: crate::Script::new(),
+                                        },
+                                    }
+                                })
+                                .collect();
+                            TransactionSignatureChecker::new_taproot(tx, in_idx, spent_outputs)
+                        }
+                        Some(0) => {
+                            // SegWit v0 (P2WPKH, P2WSH)
+                            TransactionSignatureChecker::new_witness_v0(tx, in_idx, utxo.output.value)
+                        }
+                        _ => {
+                            // Legacy or unknown witness version
+                            TransactionSignatureChecker::new(tx, in_idx, utxo.output.value)
+                        }
                     };
 
                     let result = verify_script_with_witness(

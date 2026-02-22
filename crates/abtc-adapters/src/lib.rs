@@ -23,4 +23,6 @@ pub use network::{StubPeerManager, TcpPeerManager};
 pub use rpc::JsonRpcServer;
 pub use mining::SimpleMiner;
 pub use wallet::InMemoryWallet;
+pub use wallet::FileBasedWalletStore;
+pub use wallet::PersistentWallet;
 pub use mempool::InMemoryMempool;

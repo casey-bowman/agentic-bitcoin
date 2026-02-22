@@ -45,6 +45,10 @@ pub enum ChainStateError {
         /// The error that stopped the reorg.
         reason: Box<ConnectBlockError>,
     },
+    /// Block index is missing an entry that should exist (corrupted state).
+    CorruptedIndex(BlockHash),
+    /// Could not find fork point during reorg (no shared ancestor).
+    NoForkPoint,
 }
 
 impl std::fmt::Display for ChainStateError {
@@ -64,6 +68,10 @@ impl std::fmt::Display for ChainStateError {
                 "reorg failed after disconnecting {} blocks: {}",
                 disconnected, reason
             ),
+            ChainStateError::CorruptedIndex(h) => {
+                write!(f, "corrupted block index: missing entry for {}", h)
+            }
+            ChainStateError::NoForkPoint => write!(f, "no fork point found during reorg"),
         }
     }
 }
@@ -153,7 +161,7 @@ impl ChainState {
         let header = genesis.header.clone();
 
         // Initialise the block index with the genesis header.
-        let mut index = BlockIndex::new();
+        let mut index = BlockIndex::new_with_pow_limit(params.pow_limit_bits);
         index.init_genesis(header);
 
         // Connect the genesis block to build the initial UTXO set.
@@ -263,9 +271,10 @@ impl ChainState {
             .rev()
             .find(|h| old_set.contains(h))
             .copied()
-            .unwrap(); // genesis is always shared
+            .ok_or(ChainStateError::NoForkPoint)?;
 
-        let fork_height = self.index.get(&fork_hash).unwrap().height;
+        let fork_height = self.index.get(&fork_hash)
+            .ok_or(ChainStateError::CorruptedIndex(fork_hash))?.height;
 
         // Blocks to disconnect: from current tip back to (but not including) fork point.
         let to_disconnect: Vec<BlockHash> = old_chain
@@ -302,7 +311,8 @@ impl ChainState {
             self.tip = if i + 1 < to_disconnect.len() {
                 // Next block to disconnect is the new temporary tip.
                 // But we actually just set tip to fork after the loop.
-                self.index.get(old_hash).unwrap().header.prev_block_hash
+                self.index.get(old_hash)
+                    .ok_or(ChainStateError::CorruptedIndex(*old_hash))?.header.prev_block_hash
             } else {
                 fork_hash
             };
@@ -313,7 +323,8 @@ impl ChainState {
 
         // Phase 2: Connect new blocks (fork → new tip).
         for new_hash in &to_connect {
-            let height = self.index.get(new_hash).unwrap().height;
+            let height = self.index.get(new_hash)
+                .ok_or(ChainStateError::CorruptedIndex(*new_hash))?.height;
             let block = self
                 .blocks
                 .get(new_hash)
@@ -634,5 +645,29 @@ mod tests {
         let (tip, height) = store.get_best_chain_tip().await.unwrap();
         assert_eq!(tip, cs.tip());
         assert_eq!(height, 0);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Regression tests — Session 14, Part 4 (code review fixes)
+    //
+    // These tests were written specifically for this implementation to
+    // guard against bugs found during a code review. They are NOT ports
+    // of Bitcoin Core test vectors. Each test name begins with
+    // `regression_` so it can be distinguished from the implementation
+    // unit tests above, which exercise baseline functionality.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn regression_chain_state_error_variants_exist() {
+        // Review finding #11: reorg path used .unwrap() which panics.
+        // New error types CorruptedIndex and NoForkPoint must exist and
+        // implement Display without panic.
+        let hash = BlockHash::from_hash(Hash256::from_bytes([0xAB; 32]));
+        let err1 = ChainStateError::CorruptedIndex(hash);
+        let err2 = ChainStateError::NoForkPoint;
+        let s1 = format!("{}", err1);
+        let s2 = format!("{}", err2);
+        assert!(s1.contains("corrupted"));
+        assert!(s2.contains("fork"));
     }
 }

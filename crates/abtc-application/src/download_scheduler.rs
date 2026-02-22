@@ -29,10 +29,6 @@ const STALE_TIP_CHECK_INTERVAL: u64 = 600; // 10 minutes
 /// Maximum number of blocks a single peer can have in flight.
 const MAX_BLOCKS_PER_PEER: usize = 16;
 
-/// Minimum download speed (bytes/sec) before we consider a peer slow.
-#[allow(dead_code)]
-const MIN_DOWNLOAD_SPEED: u64 = 1024; // 1 KB/s
-
 // ── Types ───────────────────────────────────────────────────────────
 
 /// A single in-flight block request.

@@ -16,6 +16,7 @@
 //! 3. If it has more work than the current best chain, it becomes the new tip
 
 use abtc_domain::chain_params::Checkpoint;
+use abtc_domain::consensus::{decode_compact_u256, hash_meets_target};
 use abtc_domain::primitives::{BlockHash, BlockHeader};
 use std::collections::HashMap;
 
@@ -60,17 +61,34 @@ pub struct BlockIndex {
     /// Hardcoded checkpoints: height → expected hash (hex, reversed).
     /// Headers at checkpoint heights must match the expected hash.
     checkpoints: HashMap<u32, String>,
+    /// The network's proof-of-work limit in compact form.
+    /// Used to reject headers with targets that exceed the network limit
+    /// and to skip PoW validation for regtest (where the limit saturates).
+    pow_limit_bits: u32,
 }
 
 impl BlockIndex {
     /// Create a new empty block index.
-    pub fn new() -> Self {
+    ///
+    /// `pow_limit_bits` is the network's maximum allowed target in compact
+    /// form (e.g. `0x1d00ffff` for mainnet, `0x207fffff` for regtest).
+    /// Pass 0 to disable PoW checks (for unit tests that don't care about PoW).
+    pub fn new_with_pow_limit(pow_limit_bits: u32) -> Self {
         BlockIndex {
             entries: HashMap::new(),
             best_tip: BlockHash::zero(),
             active_chain: Vec::new(),
             checkpoints: HashMap::new(),
+            pow_limit_bits,
         }
+    }
+
+    /// Create a new empty block index with no PoW validation.
+    ///
+    /// Equivalent to `new_with_pow_limit(0)`. PoW checks are skipped,
+    /// which is convenient for tests that only care about chain structure.
+    pub fn new() -> Self {
+        Self::new_with_pow_limit(0)
     }
 
     /// Load checkpoints into the block index.
@@ -132,6 +150,34 @@ impl BlockIndex {
 
         let height = parent_height + 1;
         let work = parent_work + work_from_bits(header.bits);
+
+        // ── Proof-of-work validation ─────────────────────────────
+        // Skip if pow_limit_bits is 0 (unit-test mode).
+        if self.pow_limit_bits != 0 {
+            let target_u256 = decode_compact_u256(header.bits);
+            let limit_u256 = decode_compact_u256(self.pow_limit_bits);
+
+            // Regtest fast path: if the PoW limit's top byte (byte 31 of
+            // the LE uint256) is >= 0x7f, the network allows trivially
+            // easy blocks. Regtest uses 0x207fffff → byte 31 = 0x7f.
+            // In this regime mine_block skips grinding (nonce=0) and
+            // check_block_header skips validation, so we match that here.
+            // This does NOT trigger for mainnet (0x1d00ffff → byte 31 = 0x00)
+            // or testnet.
+            if limit_u256[31] < 0x7f {
+                // Reject targets that exceed the network limit.
+                // A higher target means easier difficulty, so this prevents
+                // an attacker from submitting trivially easy headers.
+                if !hash_meets_target(&target_u256, &limit_u256) {
+                    return Err(BlockIndexError::TargetExceedsPowLimit);
+                }
+
+                // Verify the block hash actually meets the declared target.
+                if !hash_meets_target(hash.as_bytes(), &target_u256) {
+                    return Err(BlockIndexError::InsufficientProofOfWork);
+                }
+            }
+        }
 
         // ── Checkpoint verification ──────────────────────────────
         // If there is a checkpoint at this height, the hash must match.
@@ -336,6 +382,10 @@ pub enum BlockIndexError {
         expected: String,
         got: String,
     },
+    /// The header's target (nBits) exceeds the network's proof-of-work limit
+    TargetExceedsPowLimit,
+    /// The block hash does not meet the proof-of-work target
+    InsufficientProofOfWork,
 }
 
 impl std::fmt::Display for BlockIndexError {
@@ -349,6 +399,12 @@ impl std::fmt::Display for BlockIndexError {
                     "checkpoint mismatch at height {}: expected {}, got {}",
                     height, expected, got
                 )
+            }
+            BlockIndexError::TargetExceedsPowLimit => {
+                write!(f, "header target exceeds proof-of-work limit")
+            }
+            BlockIndexError::InsufficientProofOfWork => {
+                write!(f, "block hash does not meet proof-of-work target")
             }
         }
     }
@@ -742,5 +798,73 @@ mod tests {
 
         // Height 5 doesn't exist
         assert_eq!(index.get_median_time_past(5), None);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Regression tests — Session 15 (review finding #5: PoW in headers)
+    //
+    // These tests verify that add_header rejects headers with invalid
+    // proof of work or targets exceeding the network limit, closing the
+    // attack surface identified in the code review.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn regression_pow_check_skipped_when_limit_is_zero() {
+        // BlockIndex::new() sets pow_limit_bits = 0, disabling PoW checks.
+        // Any header should be accepted regardless of its hash vs target.
+        let mut index = BlockIndex::new();
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        // Header with mainnet difficulty — hash almost certainly doesn't
+        // meet the target, but PoW check is disabled.
+        let h1 = make_header(genesis_hash, 1);
+        assert!(index.add_header(h1).is_ok());
+    }
+
+    #[test]
+    fn regression_pow_check_enabled_with_limit() {
+        // With a real pow_limit_bits, headers must have valid PoW.
+        // Use mainnet difficulty (0x1d00ffff) — a random header hash
+        // will not meet this target.
+        let mut index = BlockIndex::new_with_pow_limit(0x1d00ffff);
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        let h1 = make_header(genesis_hash, 42);
+        let result = index.add_header(h1);
+        assert_eq!(result, Err(BlockIndexError::InsufficientProofOfWork));
+    }
+
+    #[test]
+    fn regression_target_exceeds_pow_limit_rejected() {
+        // A header with bits easier than the network limit should be rejected.
+        // pow_limit = 0x1d00ffff (mainnet). Header claims 0x2100ffff (much easier).
+        let mut index = BlockIndex::new_with_pow_limit(0x1d00ffff);
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        let mut h1 = make_header(genesis_hash, 1);
+        h1.bits = 0x2100ffff; // Target far exceeds mainnet limit
+        let result = index.add_header(h1);
+        assert_eq!(result, Err(BlockIndexError::TargetExceedsPowLimit));
+    }
+
+    #[test]
+    fn regression_regtest_skips_pow_check() {
+        // Regtest pow_limit_bits = 0x207fffff saturates u128::MAX.
+        // All headers should pass without actual PoW grinding.
+        let mut index = BlockIndex::new_with_pow_limit(0x207fffff);
+        let genesis = make_header(BlockHash::zero(), 0);
+        let genesis_hash = genesis.block_hash();
+        index.init_genesis(genesis);
+
+        let mut h1 = make_header(genesis_hash, 1);
+        h1.bits = 0x207fffff; // regtest difficulty
+        let result = index.add_header(h1);
+        assert!(result.is_ok());
     }
 }

@@ -70,8 +70,7 @@ pub enum HandshakeState {
 /// Sync state for a single peer
 #[derive(Debug, Clone)]
 struct PeerSyncState {
-    /// Peer info (used for logging and protocol checks)
-    #[allow(dead_code)]
+    /// Peer info (used for logging and protocol checks).
     info: PeerInfo,
     /// State of the P2P handshake
     handshake: HandshakeState,
@@ -600,6 +599,58 @@ impl SyncManager {
             }
             NetworkMessage::GetAddr => {
                 actions.extend(self.on_getaddr(peer_id).await?);
+            }
+            NetworkMessage::PackageTx { transactions } => {
+                let tx_count = transactions.len();
+                tracing::info!(
+                    "Received package of {} txs from peer {}",
+                    tx_count, peer_id,
+                );
+
+                // Validate package structure at the domain level first
+                match abtc_domain::policy::packages::validate_package(&transactions) {
+                    Ok(pkg_type) => {
+                        tracing::debug!(
+                            "Package from peer {} validated: {:?}, {} txs",
+                            peer_id, pkg_type, tx_count,
+                        );
+
+                        // Submit each transaction in topological order to the mempool.
+                        // Package fee evaluation happens at the acceptor level;
+                        // here we do basic per-tx submission.
+                        for tx in &transactions {
+                            let txid = tx.txid();
+                            match mempool.add_transaction(tx).await {
+                                Ok(()) => {
+                                    actions.push(SyncAction::AcceptedTransaction {
+                                        tx: tx.clone(),
+                                        from_peer: peer_id,
+                                    });
+                                }
+                                Err(e) => {
+                                    tracing::debug!(
+                                        "Package tx {} from peer {} rejected: {}",
+                                        txid, peer_id, e,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            "Invalid package from peer {}: {}",
+                            peer_id, e,
+                        );
+                    }
+                }
+            }
+            NetworkMessage::SendPackages { version } => {
+                tracing::info!(
+                    "Peer {} supports package relay v{}",
+                    peer_id, version,
+                );
+                // Record that this peer supports package relay.
+                // Feature negotiation tracking can be extended later.
             }
             _ => {
                 // Pong, etc. — ignored

@@ -3,6 +3,7 @@
 //! Corresponds to Bitcoin Core's crypto/ directory containing hashing
 //! functions, ECDSA signature verification, and Schnorr/Taproot support.
 
+pub mod bip324;
 pub mod hashing;
 pub mod schnorr;
 pub mod signing;

@@ -220,11 +220,17 @@ pub enum Opcodes {
     OP_CHECKSEQUENCEVERIFY = 0xb2,
     /// Check sequence (BIP112)
 
+    // Covenant opcodes (proposed — activation-gated by ScriptFlags)
+    /// BIP119: Check template verify (repurposes OP_NOP4)
+    OP_CHECKTEMPLATEVERIFY = 0xb3,
+    /// BIP345: Vault trigger
+    OP_VAULT = 0xbb,
+    /// BIP345: Vault recovery
+    OP_VAULT_RECOVER = 0xbc,
+
     // NOPs
     /// No operation
     OP_NOP = 0x61,
-    /// No operation
-    OP_NOP4 = 0xb3,
     /// No operation
     OP_NOP5 = 0xb4,
     /// No operation
@@ -343,8 +349,10 @@ impl Opcodes {
             0xb0 => Some(Opcodes::OP_NOP1),
             0xb1 => Some(Opcodes::OP_CHECKLOCKTIMEVERIFY),
             0xb2 => Some(Opcodes::OP_CHECKSEQUENCEVERIFY),
-            0xb3 => Some(Opcodes::OP_NOP4),
+            0xb3 => Some(Opcodes::OP_CHECKTEMPLATEVERIFY),
             0xb4 => Some(Opcodes::OP_NOP5),
+            0xbb => Some(Opcodes::OP_VAULT),
+            0xbc => Some(Opcodes::OP_VAULT_RECOVER),
             0xb5 => Some(Opcodes::OP_NOP6),
             0xb6 => Some(Opcodes::OP_NOP7),
             0xb7 => Some(Opcodes::OP_NOP8),
@@ -365,6 +373,9 @@ impl Opcodes {
 
     /// OP_NOP3 is an alias for OP_CHECKSEQUENCEVERIFY (BIP112)
     pub const OP_NOP3: Self = Self::OP_CHECKSEQUENCEVERIFY;
+
+    /// OP_NOP4 is an alias for OP_CHECKTEMPLATEVERIFY (BIP119)
+    pub const OP_NOP4: Self = Self::OP_CHECKTEMPLATEVERIFY;
 }
 
 #[cfg(test)]

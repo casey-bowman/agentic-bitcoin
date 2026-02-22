@@ -52,5 +52,5 @@ pub use storage::{BlockStore, ChainStateStore, UtxoEntry, UtxoSetInfo, BlockInde
 pub use network::{PeerManager, NetworkMessage, InventoryItem, PeerInfo, PeerEvent, NetworkListener};
 pub use mining::{BlockTemplateProvider, BlockTemplate, BlockSubmitter};
 pub use mempool::{MempoolPort, MempoolEntry, MempoolInfo};
-pub use wallet::{WalletPort, Balance};
+pub use wallet::{WalletPort, Balance, WalletStore, WalletSnapshot, WalletKeyEntry, WalletUtxoEntry};
 pub use rpc::{RpcServer, RpcHandler, RpcRequest, RpcResponse, RpcError};

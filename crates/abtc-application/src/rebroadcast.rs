@@ -27,11 +27,6 @@ const REBROADCAST_INTERVAL: u64 = 30 * 60;
 /// Maximum number of times we will rebroadcast a single transaction.
 const MAX_REBROADCASTS: u32 = 6; // ~3 hours of attempts
 
-/// Minimum seconds since last broadcast before we re-announce.
-/// (Must be <= REBROADCAST_INTERVAL; acts as a floor for `with_config` users.)
-#[allow(dead_code)]
-const MIN_SINCE_LAST_BROADCAST: u64 = 15 * 60; // 15 minutes
-
 // ── Types ───────────────────────────────────────────────────────────
 
 /// Tracking record for a single wallet transaction.

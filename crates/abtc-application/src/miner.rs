@@ -14,7 +14,7 @@
 //! use ASICs, so there's no point in optimising the nonce search beyond what is
 //! needed for testing.
 
-use abtc_domain::consensus::{decode_compact, hash_to_u128, ConsensusParams};
+use abtc_domain::consensus::{decode_compact, decode_compact_u256, hash_meets_target, ConsensusParams};
 use abtc_domain::primitives::{
     Amount, Block, BlockHash, BlockHeader, Hash256, Transaction, TxOut,
 };
@@ -33,6 +33,8 @@ pub enum MiningError {
     NonceExhausted,
     /// The mined block failed validation when connected to the chain.
     ChainError(ChainStateError),
+    /// Signet block signing failed (BIP325).
+    SignetSigningFailed(String),
 }
 
 impl std::fmt::Display for MiningError {
@@ -40,6 +42,9 @@ impl std::fmt::Display for MiningError {
         match self {
             MiningError::NonceExhausted => write!(f, "nonce space exhausted"),
             MiningError::ChainError(e) => write!(f, "chain error: {}", e),
+            MiningError::SignetSigningFailed(reason) => {
+                write!(f, "signet signing failed: {}", reason)
+            }
         }
     }
 }
@@ -72,10 +77,17 @@ impl From<ChainStateError> for MiningError {
 /// valid nonce exists (astronomically unlikely on mainnet difficulty, and
 /// impossible on regtest where the target is u128::MAX).
 pub fn mine_block(mut block: Block) -> Result<Block, MiningError> {
-    let target = decode_compact(block.header.bits);
+    let target_u256 = decode_compact_u256(block.header.bits);
 
-    // Fast path: regtest target is u128::MAX, any nonce works.
-    if target == u128::MAX {
+    // Fast path: regtest target has all bytes at max, any nonce works.
+    if target_u256 == [0xff; 32] {
+        return Ok(block);
+    }
+
+    // Also fast-path for regtest bits like 0x207fffff where the u128 decoding
+    // saturated — check if the target is effectively unlimited.
+    let target_u128 = decode_compact(block.header.bits);
+    if target_u128 == u128::MAX {
         return Ok(block);
     }
 
@@ -89,9 +101,8 @@ pub fn mine_block(mut block: Block) -> Result<Block, MiningError> {
 
         // Double-SHA256.
         let hash = double_sha256(&header_bytes);
-        let hash_int = hash_to_u128_from_slice(&hash);
 
-        if hash_int <= target {
+        if hash_meets_target(&hash, &target_u256) {
             block.header.nonce = nonce;
             return Ok(block);
         }
@@ -269,9 +280,28 @@ fn double_sha256(data: &[u8]) -> [u8; 32] {
     out
 }
 
-/// Convert hash bytes to u128 (matching rules::hash_to_u128 but taking a slice).
-fn hash_to_u128_from_slice(bytes: &[u8; 32]) -> u128 {
-    hash_to_u128(bytes)
+// ── Signet block signing (BIP325) ────────────────────────────────
+
+/// Sign a signet block for a P2WPKH challenge script.
+///
+/// Delegates to `abtc_domain::consensus::signet::sign_block_p2wpkh` for the
+/// actual BIP325 signing logic (sighash computation, ECDSA signing, commitment
+/// construction). This wrapper maps `SignetError` into `MiningError`.
+///
+/// The `secret_key_bytes` must be 32 raw bytes of a valid secp256k1 secret key
+/// whose compressed public key hashes to the P2WPKH witness program in `challenge`.
+///
+/// # Returns
+///
+/// A new block with the signed signet commitment in place and an updated
+/// merkle root.
+pub fn sign_signet_block_p2wpkh(
+    block: &Block,
+    challenge: &Script,
+    secret_key_bytes: &[u8; 32],
+) -> Result<Block, MiningError> {
+    abtc_domain::consensus::signet::sign_block_p2wpkh(block, challenge, secret_key_bytes)
+        .map_err(|e| MiningError::SignetSigningFailed(e.to_string()))
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -373,22 +403,19 @@ mod tests {
 
     #[test]
     fn test_mine_block_low_difficulty() {
-        // Use a target that requires a few nonce iterations but is still fast.
-        // bits = 0x2000ffff means target ≈ 0xffff << (8*(0x20-3)) which is huge,
-        // but less than u128::MAX.
+        // Use a target that exercises the real mining loop but finishes fast.
+        // bits = 0x2100ffff: exponent 0x21 = 33, mantissa 0x00ffff.
+        // decode_compact_u256 places 0x00ffff at byte offset 33-3 = 30, so
+        // the target's byte 31 is 0x00, byte 30 is 0xff, byte 29 is 0xff,
+        // and everything below is 0x00. The hash only needs its topmost byte
+        // (LE byte 31) to be 0x00, which happens ~1/256 tries — a few hundred
+        // nonces at most.
         let coinbase = Transaction::coinbase(
             1,
             build_coinbase_script(1),
             vec![TxOut::new(Amount::from_sat(5_000_000_000), Script::new())],
         );
-        // Use a target that's very easy but not unlimited: 0x1f00ffff
-        // target = 0xffff << 8*(0x1f-3) = 0xffff << 224 — this is bigger than
-        // u128::MAX so will get capped. Let's try 0x1c00ffff instead.
-        // target = 0xffff << 8*(0x1c-3) = 0xffff << 200 — still > u128::MAX.
-        // Use 0x1800ffff: target = 0xffff << 8*(0x18-3) = 0xffff << 168 — still > 128.
-        // Use 0x0f00ffff: target = 0xffff << 8*(0x0f-3) = 0xffff << 96.
-        // That's a 112-bit number. Very easy, almost any hash will pass.
-        let bits = 0x0f00ffffu32;
+        let bits = 0x2100ffffu32;
         let header = BlockHeader::new(
             0x20000000,
             BlockHash::zero(),
@@ -402,11 +429,10 @@ mod tests {
         block.header.merkle_root = merkle;
 
         let mined = mine_block(block).unwrap();
-        // Verify the mined block actually satisfies PoW.
+        // Verify the mined block actually satisfies PoW (full 256-bit).
         let hash = mined.header.block_hash();
-        let hash_int = hash_to_u128(hash.as_bytes());
-        let target = decode_compact(bits);
-        assert!(hash_int <= target, "mined block should satisfy PoW");
+        let target = decode_compact_u256(bits);
+        assert!(hash_meets_target(hash.as_bytes(), &target), "mined block should satisfy PoW");
     }
 
     // ── generate_blocks tests ──────────────────────────────────
@@ -486,6 +512,61 @@ mod tests {
             assert_eq!(blk.header.prev_block_hash, hashes[i - 1]);
         }
     }
+
+    // ── Signet signing tests ─────────────────────────────────────
+
+    #[test]
+    fn test_sign_signet_block_p2wpkh() {
+        use abtc_domain::consensus::signet::{
+            build_signet_commitment, validate_signet_block,
+        };
+        use abtc_domain::crypto::hashing::hash160;
+        use abtc_domain::script::Witness;
+
+        // Generate a P2WPKH challenge from a known secret key
+        let secret_key_bytes: [u8; 32] = [0x42; 32];
+        let secp = abtc_domain::secp256k1::Secp256k1::new();
+        let sk = abtc_domain::secp256k1::SecretKey::from_slice(&secret_key_bytes).unwrap();
+        let pk = abtc_domain::secp256k1::PublicKey::from_secret_key(&secp, &sk);
+        let compressed = pk.serialize();
+        let pkh = hash160(&compressed);
+
+        // P2WPKH challenge: OP_0 <20-byte pubkey hash>
+        let mut challenge_bytes = vec![0x00, 0x14];
+        challenge_bytes.extend_from_slice(&pkh);
+        let challenge = Script::from_bytes(challenge_bytes);
+
+        // Build block template with placeholder signet commitment
+        let placeholder = build_signet_commitment(&Witness::new());
+        let coinbase = Transaction::coinbase(
+            1,
+            build_coinbase_script(1),
+            vec![
+                TxOut::new(Amount::from_sat(5_000_000_000), Script::new()),
+                placeholder,
+            ],
+        );
+        let header = BlockHeader::new(
+            0x20000000,
+            BlockHash::zero(),
+            Hash256::zero(),
+            1231006505,
+            0x207fffff,
+            0,
+        );
+        let mut block = Block::new(header, vec![coinbase]);
+        let merkle = block.compute_merkle_root();
+        block.header.merkle_root = merkle;
+
+        // Sign the block
+        let signed = sign_signet_block_p2wpkh(&block, &challenge, &secret_key_bytes).unwrap();
+
+        // Validate it
+        let result = validate_signet_block(&signed, &challenge);
+        assert!(result.is_ok(), "signed signet block should validate: {:?}", result);
+    }
+
+    // ── Low-level helper tests ─────────────────────────────────
 
     #[test]
     fn test_header_prefix_length() {

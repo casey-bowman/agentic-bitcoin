@@ -8,6 +8,9 @@ repository = "https://github.com/casey-bowman/agentic-bitcoin"
 homepage = "https://github.com/casey-bowman/agentic-bitcoin"
 keywords = ["bitcoin", "agentic", "clean-architecture", "hexagonal", "ports-and-adapters"]
 categories = ["cryptography::cryptocurrencies"]
+authors = ["Casey Bowman <case.bowman@gmail.com>", "Claude Opus 4.6"]
+rust-version = "1.84"
+readme = "README.md"
 
 [dependencies]
 sha1 = "0.10"
@@ -18,6 +21,8 @@ hex = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 secp256k1 = { version = "0.29", features = ["global-context", "rand-std"] }
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
 rand = "0.8"
 
 [dev-dependencies]

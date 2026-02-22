@@ -60,6 +60,10 @@ impl ScriptFlags {
     pub const VERIFY_NULLDUMMY: u32 = 1 << 4;
     /// Taproot (BIP341)
     pub const VERIFY_TAPROOT: u32 = 1 << 17;
+    /// BIP119 OP_CHECKTEMPLATEVERIFY — proposed, activation-gated
+    pub const VERIFY_CHECKTEMPLATEVERIFY: u32 = 1 << 18;
+    /// BIP345 OP_VAULT / OP_VAULT_RECOVER — proposed, activation-gated
+    pub const VERIFY_VAULT: u32 = 1 << 19;
 
     pub fn new(flags: u32) -> Self {
         ScriptFlags(flags)
@@ -77,6 +81,7 @@ impl ScriptFlags {
                 | Self::VERIFY_CHECKLOCKTIMEVERIFY
                 | Self::VERIFY_CHECKSEQUENCEVERIFY
                 | Self::VERIFY_WITNESS
+                | Self::VERIFY_TAPROOT
                 | Self::VERIFY_MINIMALDATA
                 | Self::VERIFY_NULLDUMMY
                 | Self::VERIFY_CLEANSTACK
@@ -240,6 +245,12 @@ pub enum ScriptError {
     TaprootWrongControlSize,
     /// Witness program is empty (Taproot requires at least one witness item)
     WitnessProgramEmpty,
+    /// BIP119: CTV template hash mismatch
+    CtvHashMismatch,
+    /// BIP345: OP_VAULT verification failed
+    VaultVerifyFailed,
+    /// BIP345: OP_VAULT_RECOVER verification failed
+    VaultRecoverFailed,
 }
 
 impl std::fmt::Display for ScriptError {
@@ -291,7 +302,7 @@ pub trait SignatureChecker: Send + Sync {
     /// and verifies the signature against the public key.
     ///
     /// Default implementation returns false (for non-signing checkers).
-    fn check_schnorr_sig(&self, _sig: &[u8], _pubkey: &[u8]) -> bool {
+    fn check_schnorr_sig(&self, _sig: &[u8], _pubkey: &[u8], _hash_type: u8) -> bool {
         false
     }
 
@@ -301,7 +312,49 @@ pub trait SignatureChecker: Send + Sync {
     /// which includes the tapleaf hash, key version, and code separator position.
     ///
     /// Default implementation returns false.
-    fn check_tapscript_sig(&self, _sig: &[u8], _pubkey: &[u8], _leaf_hash: &[u8; 32]) -> bool {
+    fn check_tapscript_sig(&self, _sig: &[u8], _pubkey: &[u8], _leaf_hash: &[u8; 32], _hash_type: u8) -> bool {
+        false
+    }
+
+    /// BIP119: Verify a CTV template hash against the spending transaction.
+    ///
+    /// * `hash` — the 32-byte template hash popped from the stack
+    ///
+    /// Returns `true` if the spending transaction matches the template.
+    /// Default implementation returns false (for non-transaction checkers).
+    fn check_ctv(&self, _hash: &[u8; 32]) -> bool {
+        false
+    }
+
+    /// BIP345: Verify an OP_VAULT trigger.
+    ///
+    /// * `target_output_index` — which output is the trigger output
+    /// * `leaf_update_script_body` — the script body for the authorized spend path
+    /// * `spend_delay` — the CSV timelock period
+    /// * `recovery_spk_hash` — hash of the recovery scriptPubKey
+    ///
+    /// Default implementation returns false.
+    fn check_vault(
+        &self,
+        _target_output_index: u32,
+        _leaf_update_script_body: &[u8],
+        _spend_delay: u32,
+        _recovery_spk_hash: &[u8; 32],
+    ) -> bool {
+        false
+    }
+
+    /// BIP345: Verify an OP_VAULT_RECOVER.
+    ///
+    /// * `target_output_index` — which output receives the recovered funds
+    /// * `recovery_spk_hash` — hash of the expected recovery scriptPubKey
+    ///
+    /// Default implementation returns false.
+    fn check_vault_recover(
+        &self,
+        _target_output_index: u32,
+        _recovery_spk_hash: &[u8; 32],
+    ) -> bool {
         false
     }
 }
@@ -354,13 +407,13 @@ impl<'a> SignatureChecker for TapscriptChecker<'a> {
         if pubkey.len() != 32 || sig.is_empty() {
             return false;
         }
-        // Parse: 64 bytes = sig + SIGHASH_DEFAULT, 65 bytes = sig + explicit sighash
-        let sig_bytes = match sig.len() {
-            64 => sig,
-            65 => &sig[..64],
+        // Parse: 64 bytes = sig + SIGHASH_DEFAULT (0x00), 65 bytes = sig + explicit sighash
+        let (sig_bytes, hash_type) = match sig.len() {
+            64 => (sig, 0x00u8),
+            65 => (&sig[..64], sig[64]),
             _ => return false,
         };
-        self.inner.check_tapscript_sig(sig_bytes, pubkey, &self.tapleaf_hash)
+        self.inner.check_tapscript_sig(sig_bytes, pubkey, &self.tapleaf_hash, hash_type)
     }
 
     fn check_lock_time(&self, lock_time: i64) -> bool {
@@ -371,12 +424,12 @@ impl<'a> SignatureChecker for TapscriptChecker<'a> {
         self.inner.check_sequence(sequence)
     }
 
-    fn check_schnorr_sig(&self, sig: &[u8], pubkey: &[u8]) -> bool {
-        self.inner.check_tapscript_sig(sig, pubkey, &self.tapleaf_hash)
+    fn check_schnorr_sig(&self, sig: &[u8], pubkey: &[u8], hash_type: u8) -> bool {
+        self.inner.check_tapscript_sig(sig, pubkey, &self.tapleaf_hash, hash_type)
     }
 
-    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32]) -> bool {
-        self.inner.check_tapscript_sig(sig, pubkey, leaf_hash)
+    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32], hash_type: u8) -> bool {
+        self.inner.check_tapscript_sig(sig, pubkey, leaf_hash, hash_type)
     }
 }
 
@@ -423,6 +476,9 @@ pub struct ScriptInterpreter<'a> {
     op_count: usize,
     /// The script currently being executed (needed for legacy sighash in OP_CHECKSIG)
     script_code: Script,
+    /// BIP342 tapscript mode: removes the 10,000-byte script size limit
+    /// and the 201 non-push opcode limit.
+    tapscript_mode: bool,
 }
 
 impl<'a> ScriptInterpreter<'a> {
@@ -436,6 +492,24 @@ impl<'a> ScriptInterpreter<'a> {
             checker,
             op_count: 0,
             script_code: Script::new(),
+            tapscript_mode: false,
+        }
+    }
+
+    /// Create a new interpreter in BIP342 tapscript mode.
+    ///
+    /// Tapscript mode removes the legacy 10,000-byte script size limit and the
+    /// 201 non-push opcode limit (per BIP342).
+    pub fn new_tapscript(flags: ScriptFlags, checker: &'a dyn SignatureChecker) -> Self {
+        ScriptInterpreter {
+            stack: Vec::new(),
+            altstack: Vec::new(),
+            exec_stack: Vec::new(),
+            flags,
+            checker,
+            op_count: 0,
+            script_code: Script::new(),
+            tapscript_mode: true,
         }
     }
 
@@ -485,7 +559,8 @@ impl<'a> ScriptInterpreter<'a> {
     pub fn eval_script(&mut self, script: &Script) -> Result<(), ScriptError> {
         let bytes = script.as_bytes();
 
-        if bytes.len() > MAX_SCRIPT_SIZE {
+        // BIP342: tapscript removes the 10,000-byte script size limit
+        if !self.tapscript_mode && bytes.len() > MAX_SCRIPT_SIZE {
             return Err(ScriptError::ScriptSize);
         }
 
@@ -566,10 +641,10 @@ impl<'a> ScriptInterpreter<'a> {
                 None => return Err(ScriptError::InvalidOpcode),
             };
 
-            // Count non-push opcodes
+            // Count non-push opcodes (BIP342: limit removed for tapscripts)
             if byte > Opcodes::OP_16 as u8 {
                 self.op_count += 1;
-                if self.op_count > MAX_OPS_PER_SCRIPT {
+                if !self.tapscript_mode && self.op_count > MAX_OPS_PER_SCRIPT {
                     return Err(ScriptError::OpCount);
                 }
             }
@@ -986,7 +1061,7 @@ impl<'a> ScriptInterpreter<'a> {
                         return Err(ScriptError::MultisigTooManyKeys);
                     }
                     self.op_count += n_keys;
-                    if self.op_count > MAX_OPS_PER_SCRIPT {
+                    if !self.tapscript_mode && self.op_count > MAX_OPS_PER_SCRIPT {
                         return Err(ScriptError::OpCount);
                     }
 
@@ -1049,7 +1124,7 @@ impl<'a> ScriptInterpreter<'a> {
                         return Err(ScriptError::MultisigTooManyKeys);
                     }
                     self.op_count += n_keys;
-                    if self.op_count > MAX_OPS_PER_SCRIPT {
+                    if !self.tapscript_mode && self.op_count > MAX_OPS_PER_SCRIPT {
                         return Err(ScriptError::OpCount);
                     }
 
@@ -1155,8 +1230,90 @@ impl<'a> ScriptInterpreter<'a> {
                     }
                 }
 
+                // ---- BIP119: OP_CHECKTEMPLATEVERIFY ----
+
+                Opcodes::OP_CHECKTEMPLATEVERIFY => {
+                    if !self.flags.has(ScriptFlags::VERIFY_CHECKTEMPLATEVERIFY) {
+                        // When CTV is not activated, this is OP_NOP4 — treat as NOP
+                        // (but respect DISCOURAGE_UPGRADABLE_NOPS)
+                        if self.flags.has(ScriptFlags::VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
+                            return Err(ScriptError::BadOpcode);
+                        }
+                    } else {
+                        // CTV is activated: pop 32-byte hash, verify template
+                        let hash_bytes = self.pop()?;
+                        if hash_bytes.len() != 32 {
+                            return Err(ScriptError::CtvHashMismatch);
+                        }
+                        let mut hash = [0u8; 32];
+                        hash.copy_from_slice(&hash_bytes);
+                        if !self.checker.check_ctv(&hash) {
+                            return Err(ScriptError::CtvHashMismatch);
+                        }
+                    }
+                }
+
+                // ---- BIP345: OP_VAULT ----
+
+                Opcodes::OP_VAULT => {
+                    if !self.flags.has(ScriptFlags::VERIFY_VAULT) {
+                        return Err(ScriptError::BadOpcode);
+                    }
+                    // Stack (top to bottom): target_output_index, leaf_update_script_body,
+                    // spend_delay, recovery_spk_hash
+                    let idx_bytes = self.pop()?;
+                    let leaf_body = self.pop()?;
+                    let delay_num = {
+                        let delay_bytes = self.pop()?;
+                        decode_script_num(&delay_bytes, MAX_SCRIPT_NUM_LENGTH)?
+                    };
+                    let recovery_hash_bytes = self.pop()?;
+
+                    if delay_num < 0 || recovery_hash_bytes.len() != 32 {
+                        return Err(ScriptError::VaultVerifyFailed);
+                    }
+
+                    let target_idx = decode_script_num(&idx_bytes, MAX_SCRIPT_NUM_LENGTH)? as u32;
+                    let mut recovery_hash = [0u8; 32];
+                    recovery_hash.copy_from_slice(&recovery_hash_bytes);
+
+                    if !self.checker.check_vault(
+                        target_idx,
+                        &leaf_body,
+                        delay_num as u32,
+                        &recovery_hash,
+                    ) {
+                        return Err(ScriptError::VaultVerifyFailed);
+                    }
+                    self.push_bool(true)?;
+                }
+
+                // ---- BIP345: OP_VAULT_RECOVER ----
+
+                Opcodes::OP_VAULT_RECOVER => {
+                    if !self.flags.has(ScriptFlags::VERIFY_VAULT) {
+                        return Err(ScriptError::BadOpcode);
+                    }
+                    // Stack (top to bottom): target_output_index, recovery_spk_hash
+                    let idx_bytes = self.pop()?;
+                    let recovery_hash_bytes = self.pop()?;
+
+                    if recovery_hash_bytes.len() != 32 {
+                        return Err(ScriptError::VaultRecoverFailed);
+                    }
+
+                    let target_idx = decode_script_num(&idx_bytes, MAX_SCRIPT_NUM_LENGTH)? as u32;
+                    let mut recovery_hash = [0u8; 32];
+                    recovery_hash.copy_from_slice(&recovery_hash_bytes);
+
+                    if !self.checker.check_vault_recover(target_idx, &recovery_hash) {
+                        return Err(ScriptError::VaultRecoverFailed);
+                    }
+                    self.push_bool(true)?;
+                }
+
                 // Upgradable NOPs
-                Opcodes::OP_NOP1 | Opcodes::OP_NOP4 | Opcodes::OP_NOP5
+                Opcodes::OP_NOP1 | Opcodes::OP_NOP5
                 | Opcodes::OP_NOP6 | Opcodes::OP_NOP7 | Opcodes::OP_NOP8
                 | Opcodes::OP_NOP9 | Opcodes::OP_NOP10 => {
                     if self.flags.has(ScriptFlags::VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
@@ -1494,12 +1651,12 @@ fn verify_taproot(
         // KEY PATH SPENDING: witness = [signature] (possibly with annex stripped)
         let sig_data = witness.get(0).unwrap();
 
-        let (sig_bytes, _hash_type) = parse_schnorr_signature(sig_data)
+        let (sig_bytes, hash_type) = parse_schnorr_signature(sig_data)
             .ok_or(ScriptError::SchnorrSigSize)?;
 
         // For key-path spending, we need the checker to compute the sighash
         // and verify against the output key (the 32-byte program itself).
-        let verified = checker.check_schnorr_sig(sig_bytes, program);
+        let verified = checker.check_schnorr_sig(sig_bytes, program, hash_type);
         if !verified {
             return Err(ScriptError::SchnorrSigVerifyFail);
         }
@@ -1522,10 +1679,9 @@ fn verify_taproot(
         if control.leaf_version == TAPSCRIPT_LEAF_VERSION {
             let tap_script = Script::from_bytes(script_data.to_vec());
 
-            // Script size limit for tapscripts (same as witness scripts)
-            if tap_script.len() > MAX_SCRIPT_SIZE {
-                return Err(ScriptError::ScriptSize);
-            }
+            // BIP342: tapscripts have NO script size limit (the legacy 10,000-byte
+            // limit is removed). The only size constraint is the consensus block
+            // weight limit.
 
             // Compute the tapleaf hash for script-path sighash
             let leaf_hash = crate::crypto::taproot::tapleaf_hash(
@@ -1538,8 +1694,9 @@ fn verify_taproot(
             let tapscript_checker = TapscriptChecker::new(checker, leaf_hash);
 
             // Execute the tapscript with the remaining witness items as initial stack
-            // (everything except the script and control block)
-            let mut interp = ScriptInterpreter::new(flags, &tapscript_checker);
+            // (everything except the script and control block).
+            // Use new_tapscript to disable legacy limits (BIP342).
+            let mut interp = ScriptInterpreter::new_tapscript(flags, &tapscript_checker);
             for i in 0..stack_size - 2 {
                 interp.push(witness.get(i).unwrap().to_vec())?;
             }
@@ -2179,5 +2336,104 @@ mod tests {
             &NoSigChecker,
         );
         assert_eq!(result, Err(ScriptError::WitnessProgramWrongLength));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Regression tests — Session 14, Part 4 (code review fixes)
+    //
+    // These tests were written specifically for this implementation to
+    // guard against bugs found during a code review. They are NOT ports
+    // of Bitcoin Core test vectors. Each test name begins with
+    // `regression_` so it can be distinguished from the implementation
+    // unit tests above, which exercise baseline functionality.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn regression_standard_flags_include_verify_taproot() {
+        // Review finding #14: ScriptFlags::standard() was missing
+        // VERIFY_TAPROOT, so taproot outputs were treated as anyone-can-spend.
+        let flags = ScriptFlags::standard();
+        assert!(flags.has(ScriptFlags::VERIFY_TAPROOT),
+            "standard() must include VERIFY_TAPROOT");
+    }
+
+    #[test]
+    fn regression_standard_flags_include_all_segwit() {
+        // Ensure standard flags include the full SegWit stack.
+        let flags = ScriptFlags::standard();
+        assert!(flags.has(ScriptFlags::VERIFY_P2SH));
+        assert!(flags.has(ScriptFlags::VERIFY_WITNESS));
+        assert!(flags.has(ScriptFlags::VERIFY_TAPROOT));
+        assert!(flags.has(ScriptFlags::VERIFY_CLEANSTACK));
+    }
+
+    #[test]
+    fn regression_tapscript_mode_allows_large_script() {
+        // Review finding #15: BIP342 tapscript has NO 10,000-byte script
+        // size limit. Build a script larger than MAX_SCRIPT_SIZE that is
+        // all OP_NOPs — valid under tapscript rules.
+        let script_bytes = vec![Opcodes::OP_NOP as u8; 10_500];
+        let big_script = Script::from_bytes(script_bytes);
+
+        // Legacy mode should reject it.
+        let mut legacy_interp = ScriptInterpreter::new(
+            ScriptFlags::new(0), &NoSigChecker,
+        );
+        assert_eq!(legacy_interp.eval_script(&big_script), Err(ScriptError::ScriptSize));
+
+        // Tapscript mode should accept it.
+        let mut tap_interp = ScriptInterpreter::new_tapscript(
+            ScriptFlags::new(0), &NoSigChecker,
+        );
+        // Push a true value first so the script doesn't fail with empty stack.
+        tap_interp.push(vec![1]).unwrap();
+        assert!(tap_interp.eval_script(&big_script).is_ok(),
+            "tapscript mode should allow scripts > 10,000 bytes");
+    }
+
+    #[test]
+    fn regression_tapscript_mode_allows_many_opcodes() {
+        // Review finding #15: BIP342 tapscript has NO 201 opcode limit.
+        let mut script_bytes = Vec::new();
+        for _ in 0..250 {
+            script_bytes.push(Opcodes::OP_NOP as u8);
+        }
+        let big_script = Script::from_bytes(script_bytes);
+
+        // Legacy mode should reject it.
+        let mut legacy_interp = ScriptInterpreter::new(
+            ScriptFlags::new(0), &NoSigChecker,
+        );
+        assert_eq!(legacy_interp.eval_script(&big_script), Err(ScriptError::OpCount));
+
+        // Tapscript mode should accept it.
+        let mut tap_interp = ScriptInterpreter::new_tapscript(
+            ScriptFlags::new(0), &NoSigChecker,
+        );
+        tap_interp.push(vec![1]).unwrap();
+        assert!(tap_interp.eval_script(&big_script).is_ok(),
+            "tapscript mode should allow > 201 non-push opcodes");
+    }
+
+    #[test]
+    fn regression_legacy_mode_still_enforces_script_size() {
+        // Safety net: legacy limits must remain intact after the BIP342 change.
+        let script_bytes = vec![Opcodes::OP_NOP as u8; 10_001];
+        let script = Script::from_bytes(script_bytes);
+        let mut interp = ScriptInterpreter::new(
+            ScriptFlags::new(0), &NoSigChecker,
+        );
+        assert_eq!(interp.eval_script(&script), Err(ScriptError::ScriptSize));
+    }
+
+    #[test]
+    fn regression_legacy_mode_still_enforces_opcode_count() {
+        // Safety net: legacy limits must remain intact after the BIP342 change.
+        let script_bytes = vec![Opcodes::OP_NOP as u8; 202];
+        let script = Script::from_bytes(script_bytes);
+        let mut interp = ScriptInterpreter::new(
+            ScriptFlags::new(0), &NoSigChecker,
+        );
+        assert_eq!(interp.eval_script(&script), Err(ScriptError::OpCount));
     }
 }

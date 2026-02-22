@@ -142,7 +142,7 @@ impl<'a> TransactionSignatureChecker<'a> {
     ///   tagged_hash("TapSighash", epoch || hash_type || version || locktime ||
     ///     sha256(prevouts) || sha256(amounts) || sha256(scriptpubkeys) ||
     ///     sha256(sequences) || sha256(outputs) || spend_type || input_index)
-    pub(crate) fn compute_taproot_sighash(&self) -> [u8; 32] {
+    pub(crate) fn compute_taproot_sighash(&self, hash_type: u8) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
         // SHA256 of all prevouts (txid || vout for each input)
@@ -153,39 +153,27 @@ impl<'a> TransactionSignatureChecker<'a> {
         }
         let sha_prevouts: [u8; 32] = prevouts_hasher.finalize().into();
 
+        // BIP341 requires all spent outputs for the sighash. If they're missing,
+        // we cannot compute a correct sighash — return a sentinel that will never
+        // match a valid signature, causing verification to fail deterministically.
+        let spent = match self.spent_outputs {
+            Some(ref s) => s,
+            None => return [0xff; 32],
+        };
+
         // SHA256 of all amounts
         let mut amounts_hasher = Sha256::new();
-        if let Some(ref spent) = self.spent_outputs {
-            // Full BIP341: use all spent output amounts
-            for so in spent {
-                amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
-            }
-        } else {
-            // Fallback: only our own amount is known
-            for (i, _input) in self.tx.inputs.iter().enumerate() {
-                if i == self.input_index {
-                    amounts_hasher.update(&self.amount.as_sat().to_le_bytes());
-                } else {
-                    amounts_hasher.update(&0i64.to_le_bytes());
-                }
-            }
+        for so in spent {
+            amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
         }
         let sha_amounts: [u8; 32] = amounts_hasher.finalize().into();
 
         // SHA256 of all scriptpubkeys
         let mut spks_hasher = Sha256::new();
-        if let Some(ref spent) = self.spent_outputs {
-            // Full BIP341: use all spent output scriptPubKeys
-            for so in spent {
-                let spk = so.script_pubkey.as_bytes();
-                encode_compact_size_into(&mut spks_hasher, spk.len());
-                spks_hasher.update(spk);
-            }
-        } else {
-            // Fallback: empty scripts
-            for _ in &self.tx.inputs {
-                spks_hasher.update(&[0x00]);
-            }
+        for so in spent {
+            let spk = so.script_pubkey.as_bytes();
+            encode_compact_size_into(&mut spks_hasher, spk.len());
+            spks_hasher.update(spk);
         }
         let sha_scriptpubkeys: [u8; 32] = spks_hasher.finalize().into();
 
@@ -224,7 +212,7 @@ impl<'a> TransactionSignatureChecker<'a> {
         // input_index
         preimage.extend_from_slice(&(self.input_index as u32).to_le_bytes());
 
-        super::taproot::taproot_sighash(0x00, 0x00, &preimage)
+        super::taproot::taproot_sighash(0x00, hash_type, &preimage)
     }
 
     /// Compute the Taproot sighash for script-path spending (BIP341 §4.3).
@@ -237,6 +225,7 @@ impl<'a> TransactionSignatureChecker<'a> {
     pub(crate) fn compute_taproot_sighash_script_path(
         &self,
         leaf_hash: &[u8; 32],
+        hash_type: u8,
     ) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
@@ -248,33 +237,23 @@ impl<'a> TransactionSignatureChecker<'a> {
         }
         let sha_prevouts: [u8; 32] = prevouts_hasher.finalize().into();
 
+        // BIP341 requires all spent outputs. Fail if missing.
+        let spent = match self.spent_outputs {
+            Some(ref s) => s,
+            None => return [0xff; 32],
+        };
+
         let mut amounts_hasher = Sha256::new();
-        if let Some(ref spent) = self.spent_outputs {
-            for so in spent {
-                amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
-            }
-        } else {
-            for (i, _) in self.tx.inputs.iter().enumerate() {
-                if i == self.input_index {
-                    amounts_hasher.update(&self.amount.as_sat().to_le_bytes());
-                } else {
-                    amounts_hasher.update(&0i64.to_le_bytes());
-                }
-            }
+        for so in spent {
+            amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
         }
         let sha_amounts: [u8; 32] = amounts_hasher.finalize().into();
 
         let mut spks_hasher = Sha256::new();
-        if let Some(ref spent) = self.spent_outputs {
-            for so in spent {
-                let spk = so.script_pubkey.as_bytes();
-                encode_compact_size_into(&mut spks_hasher, spk.len());
-                spks_hasher.update(spk);
-            }
-        } else {
-            for _ in &self.tx.inputs {
-                spks_hasher.update(&[0x00]);
-            }
+        for so in spent {
+            let spk = so.script_pubkey.as_bytes();
+            encode_compact_size_into(&mut spks_hasher, spk.len());
+            spks_hasher.update(spk);
         }
         let sha_scriptpubkeys: [u8; 32] = spks_hasher.finalize().into();
 
@@ -315,7 +294,7 @@ impl<'a> TransactionSignatureChecker<'a> {
         // code_separator_pos (4 bytes LE, 0xFFFFFFFF = no OP_CODESEPARATOR executed)
         preimage.extend_from_slice(&0xFFFFFFFFu32.to_le_bytes());
 
-        super::taproot::taproot_sighash(0x00, 0x00, &preimage)
+        super::taproot::taproot_sighash(0x00, hash_type, &preimage)
     }
 
     /// Compute the legacy sighash (pre-SegWit) for the given hash type.
@@ -643,28 +622,78 @@ impl<'a> SignatureChecker for TransactionSignatureChecker<'a> {
         (sequence & mask_value) <= (tx_sequence & mask_value)
     }
 
-    fn check_schnorr_sig(&self, sig: &[u8], pubkey: &[u8]) -> bool {
+    fn check_schnorr_sig(&self, sig: &[u8], pubkey: &[u8], hash_type: u8) -> bool {
         if sig.len() != 64 || pubkey.len() != 32 {
             return false;
         }
 
         // Use script-path sighash if tapleaf_hash is set, else key-path
         let sighash = if let Some(ref leaf_hash) = self.tapleaf_hash {
-            self.compute_taproot_sighash_script_path(leaf_hash)
+            self.compute_taproot_sighash_script_path(leaf_hash, hash_type)
         } else {
-            self.compute_taproot_sighash()
+            self.compute_taproot_sighash(hash_type)
         };
 
         super::schnorr::verify_schnorr(pubkey, &sighash, sig)
     }
 
-    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32]) -> bool {
+    fn check_tapscript_sig(&self, sig: &[u8], pubkey: &[u8], leaf_hash: &[u8; 32], hash_type: u8) -> bool {
         if sig.len() != 64 || pubkey.len() != 32 {
             return false;
         }
 
-        let sighash = self.compute_taproot_sighash_script_path(leaf_hash);
+        let sighash = self.compute_taproot_sighash_script_path(leaf_hash, hash_type);
         super::schnorr::verify_schnorr(pubkey, &sighash, sig)
+    }
+
+    fn check_ctv(&self, hash: &[u8; 32]) -> bool {
+        use crate::covenants::ctv::compute_ctv_hash;
+        let expected = compute_ctv_hash(self.tx, self.input_index as u32);
+        expected.as_bytes() == hash
+    }
+
+    fn check_vault(
+        &self,
+        target_output_index: u32,
+        leaf_update_script_body: &[u8],
+        spend_delay: u32,
+        _recovery_spk_hash: &[u8; 32],
+    ) -> bool {
+        use crate::covenants::vault::{verify_vault_trigger, VaultTriggerInfo};
+
+        let trigger = VaultTriggerInfo {
+            target_output_index,
+            leaf_update_script_body: leaf_update_script_body.to_vec(),
+        };
+        // Use 10_000 sat fee tolerance (configurable in production)
+        verify_vault_trigger(
+            self.tx,
+            &trigger,
+            self.amount,
+            spend_delay,
+            Amount::from_sat(10_000),
+        )
+        .is_ok()
+    }
+
+    fn check_vault_recover(
+        &self,
+        target_output_index: u32,
+        recovery_spk_hash: &[u8; 32],
+    ) -> bool {
+        use crate::covenants::vault::verify_vault_recover;
+        use crate::primitives::Hash256;
+
+        let recovery_hash = Hash256::from_bytes(*recovery_spk_hash);
+        // Use 10_000 sat fee tolerance (configurable in production)
+        verify_vault_recover(
+            self.tx,
+            target_output_index,
+            &recovery_hash,
+            self.amount,
+            Amount::from_sat(10_000),
+        )
+        .is_ok()
     }
 }
 
@@ -683,16 +712,10 @@ pub fn verify_ecdsa(msg_hash: &[u8; 32], der_sig: &[u8], pubkey_bytes: &[u8]) ->
         Err(_) => return false,
     };
 
-    // Parse DER signature
+    // Parse DER signature (strict DER only — no compact fallback per BIP66)
     let sig = match Signature::from_der(der_sig) {
         Ok(s) => s,
-        Err(_) => {
-            // Try compact/normalized form as fallback
-            match Signature::from_compact(der_sig) {
-                Ok(s) => s,
-                Err(_) => return false,
-            }
-        }
+        Err(_) => return false,
     };
 
     // Parse message
@@ -799,5 +822,147 @@ mod tests {
 
         // They must be different — BIP143 includes the amount, legacy doesn't
         assert_ne!(legacy_hash, witness_hash);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Regression tests — Session 14, Part 4 (code review fixes)
+    //
+    // These tests were written specifically for this implementation to
+    // guard against bugs found during a code review. They are NOT ports
+    // of Bitcoin Core test vectors. Each test name begins with
+    // `regression_` so it can be distinguished from the implementation
+    // unit tests above, which exercise baseline functionality.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn regression_verify_ecdsa_rejects_compact_signatures() {
+        // Regression: verify_ecdsa used to fall back to Signature::from_compact()
+        // after DER parsing failed. BIP66 requires strict DER encoding.
+        //
+        // A compact signature is 64 bytes (r || s). DER encoding requires ~72 bytes.
+        // We ensure that a valid compact signature is rejected.
+        use secp256k1::{Secp256k1, SecretKey, Message};
+
+        let secp = Secp256k1::new();
+        let sk = SecretKey::from_slice(&[0xcd; 32]).unwrap();
+        let pk = secp256k1::PublicKey::from_secret_key(&secp, &sk);
+        let msg_hash = [0xab; 32];
+        let msg = Message::from_digest_slice(&msg_hash).unwrap();
+        let sig = secp.sign_ecdsa(&msg, &sk);
+
+        // DER-encoded signature should verify.
+        let der_bytes = sig.serialize_der();
+        assert!(verify_ecdsa(&msg_hash, &der_bytes, &pk.serialize()),
+            "valid DER signature should verify");
+
+        // Compact-encoded (64 bytes) should NOT verify — this is the regression test.
+        let compact_bytes = sig.serialize_compact();
+        assert!(!verify_ecdsa(&msg_hash, &compact_bytes, &pk.serialize()),
+            "compact signature must be rejected (strict DER per BIP66)");
+    }
+
+    #[test]
+    fn regression_taproot_sighash_fails_without_spent_outputs() {
+        // Regression: compute_taproot_sighash used to substitute zero amounts
+        // when spent_outputs was None, producing a plausible-looking (but wrong)
+        // sighash that could match a crafted signature.
+        // Now it returns [0xff; 32] — guaranteed to never match.
+        use crate::primitives::{OutPoint, TxIn, TxOut, Txid};
+
+        let tx = Transaction::new(
+            2,
+            vec![TxIn::new(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+                0xfffffffe,
+            )],
+            vec![TxOut::new(Amount::from_sat(50_000), Script::new())],
+            0,
+        );
+
+        // Create checker WITHOUT spent_outputs (the old bug).
+        let checker = TransactionSignatureChecker::new(&tx, 0, Amount::from_sat(100_000));
+        // spent_outputs is None, so taproot sighash should return sentinel.
+        let sighash = checker.compute_taproot_sighash(0x00);
+        assert_eq!(sighash, [0xff; 32],
+            "taproot sighash without spent_outputs must return sentinel");
+    }
+
+    #[test]
+    fn regression_taproot_sighash_script_path_fails_without_spent_outputs() {
+        use crate::primitives::{OutPoint, TxIn, TxOut, Txid};
+
+        let tx = Transaction::new(
+            2,
+            vec![TxIn::new(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+                0xfffffffe,
+            )],
+            vec![TxOut::new(Amount::from_sat(50_000), Script::new())],
+            0,
+        );
+
+        let checker = TransactionSignatureChecker::new(&tx, 0, Amount::from_sat(100_000));
+        let leaf_hash = [0xab; 32];
+        let sighash = checker.compute_taproot_sighash_script_path(&leaf_hash, 0x00);
+        assert_eq!(sighash, [0xff; 32],
+            "taproot script-path sighash without spent_outputs must return sentinel");
+    }
+
+    #[test]
+    fn regression_taproot_sighash_works_with_spent_outputs() {
+        // With valid spent outputs, the sighash should NOT be the sentinel.
+        use crate::primitives::{OutPoint, TxIn, TxOut, Txid};
+
+        let tx = Transaction::new(
+            2,
+            vec![TxIn::new(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+                0xfffffffe,
+            )],
+            vec![TxOut::new(Amount::from_sat(50_000), Script::new())],
+            0,
+        );
+
+        let spent_outputs = vec![SpentOutput {
+            amount: Amount::from_sat(100_000),
+            script_pubkey: Script::new(),
+        }];
+        let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+        let sighash = checker.compute_taproot_sighash(0x00);
+        assert_ne!(sighash, [0xff; 32],
+            "taproot sighash with spent_outputs should produce a real hash");
+        assert_ne!(sighash, [0x00; 32],
+            "taproot sighash should not be all zeros");
+    }
+
+    #[test]
+    fn regression_taproot_sighash_hash_type_affects_result() {
+        // Different hash_type values should produce different sighashes.
+        use crate::primitives::{OutPoint, TxIn, TxOut, Txid};
+
+        let tx = Transaction::new(
+            2,
+            vec![TxIn::new(
+                OutPoint::new(Txid::zero(), 0),
+                Script::new(),
+                0xfffffffe,
+            )],
+            vec![TxOut::new(Amount::from_sat(50_000), Script::new())],
+            0,
+        );
+
+        let spent_outputs = vec![SpentOutput {
+            amount: Amount::from_sat(100_000),
+            script_pubkey: Script::new(),
+        }];
+        let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
+
+        let sighash_default = checker.compute_taproot_sighash(0x00);
+        let sighash_all = checker.compute_taproot_sighash(0x01);
+        assert_ne!(sighash_default, sighash_all,
+            "SIGHASH_DEFAULT and SIGHASH_ALL should produce different hashes");
     }
 }

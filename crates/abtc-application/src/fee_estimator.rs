@@ -57,9 +57,9 @@ struct Bucket {
 
 /// Summary of a single block's confirmed fees (kept for rolling window stats).
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct BlockFeeRecord {
-    height: u32,
+    /// Block height (retained for diagnostic logging).
+    _height: u32,
     /// Median fee rate of transactions in this block (sat/vB).
     median_fee_rate: f64,
     /// Number of non-coinbase transactions.
@@ -181,7 +181,7 @@ impl FeeEstimator {
         };
 
         let record = BlockFeeRecord {
-            height,
+            _height: height,
             median_fee_rate: median,
             tx_count: confirmed_fees.len() as u32,
         };

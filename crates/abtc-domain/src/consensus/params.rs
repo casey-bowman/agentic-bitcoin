@@ -193,7 +193,7 @@ impl ConsensusParams {
             minimum_chain_work: 0,
             default_assume_valid: Some(
                 BlockHash::from_hex(
-                    "3fcc5b66f08588bbfdcf1b7e9c80e1b8d70d7c8f18e2e9a3b4c5d6e7f8a9b0c"
+                    "03fcc5b66f08588bbfdcf1b7e9c80e1b8d70d7c8f18e2e9a3b4c5d6e7f8a9b0c"
                 )
                 .unwrap(),
             ),

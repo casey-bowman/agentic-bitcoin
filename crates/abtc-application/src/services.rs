@@ -23,6 +23,8 @@ pub struct BlockchainService {
     block_store: Arc<dyn BlockStore>,
     chain_state: Arc<dyn ChainStateStore>,
     peer_manager: Arc<dyn PeerManager>,
+    /// Consensus parameters for the active network (mainnet, testnet, regtest, signet).
+    consensus_params: ConsensusParams,
 }
 
 impl BlockchainService {
@@ -32,10 +34,21 @@ impl BlockchainService {
         chain_state: Arc<dyn ChainStateStore>,
         peer_manager: Arc<dyn PeerManager>,
     ) -> Self {
+        Self::with_params(block_store, chain_state, peer_manager, ConsensusParams::mainnet())
+    }
+
+    /// Create a new blockchain service with explicit consensus parameters.
+    pub fn with_params(
+        block_store: Arc<dyn BlockStore>,
+        chain_state: Arc<dyn ChainStateStore>,
+        peer_manager: Arc<dyn PeerManager>,
+        consensus_params: ConsensusParams,
+    ) -> Self {
         BlockchainService {
             block_store,
             chain_state,
             peer_manager,
+            consensus_params,
         }
     }
 
@@ -63,8 +76,7 @@ impl BlockchainService {
         }
 
         // Validate block against consensus rules
-        let params = ConsensusParams::mainnet(); // TODO: Store network params in service
-        rules::check_block(block, &params).map_err(|e| format!("Block validation failed: {}", e))?;
+        rules::check_block(block, &self.consensus_params).map_err(|e| format!("Block validation failed: {}", e))?;
 
         // Get current chain tip height
         let (_, current_height) = self.chain_state
@@ -342,14 +354,14 @@ impl BlockchainService {
 /// Mempool transaction management service
 pub struct MempoolService {
     mempool: Arc<dyn MempoolPort>,
-    #[allow(dead_code)]
-    chain_state: Arc<dyn ChainStateStore>,
+    /// Chain state (available for height-aware fee policies).
+    _chain_state: Arc<dyn ChainStateStore>,
 }
 
 impl MempoolService {
     /// Create a new mempool service
     pub fn new(mempool: Arc<dyn MempoolPort>, chain_state: Arc<dyn ChainStateStore>) -> Self {
-        MempoolService { mempool, chain_state }
+        MempoolService { mempool, _chain_state: chain_state }
     }
 
     /// Submit a transaction to the mempool
@@ -407,17 +419,29 @@ impl MempoolService {
 pub struct MiningService {
     template_provider: Arc<dyn BlockTemplateProvider>,
     blockchain: Arc<BlockchainService>,
+    /// Consensus parameters for block template generation.
+    consensus_params: ConsensusParams,
 }
 
 impl MiningService {
-    /// Create a new mining service
+    /// Create a new mining service (defaults to mainnet consensus).
     pub fn new(
         template_provider: Arc<dyn BlockTemplateProvider>,
         blockchain: Arc<BlockchainService>,
     ) -> Self {
+        Self::with_params(template_provider, blockchain, ConsensusParams::mainnet())
+    }
+
+    /// Create a new mining service with explicit consensus parameters.
+    pub fn with_params(
+        template_provider: Arc<dyn BlockTemplateProvider>,
+        blockchain: Arc<BlockchainService>,
+        consensus_params: ConsensusParams,
+    ) -> Self {
         MiningService {
             template_provider,
             blockchain,
+            consensus_params,
         }
     }
 
@@ -426,9 +450,8 @@ impl MiningService {
         &self,
         coinbase_script: &abtc_domain::script::Script,
     ) -> Result<abtc_ports::BlockTemplate, String> {
-        let params = abtc_domain::ChainParams::mainnet().consensus;
         self.template_provider
-            .create_block_template(coinbase_script, &params)
+            .create_block_template(coinbase_script, &self.consensus_params)
             .await
             .map_err(|e| e.to_string())
     }

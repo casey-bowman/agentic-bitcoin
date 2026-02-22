@@ -9,6 +9,14 @@
 //!
 //! The network layer uses Bitcoin protocol message framing:
 //!   [4-byte magic][12-byte command][4-byte payload length][4-byte checksum][payload]
+//!
+//! ## BIP324 v2 encrypted transport
+//!
+//! The [`v2`] submodule implements encrypted peer-to-peer transport using
+//! ECDH key exchange, HKDF session key derivation, and ChaCha20-Poly1305
+//! AEAD with periodic rekeying (FSChaCha20Poly1305).
+
+pub mod v2;
 
 use async_trait::async_trait;
 use abtc_domain::primitives::{Block, Transaction};
@@ -621,6 +629,10 @@ fn encode_network_message(msg: &NetworkMessage) -> (String, Vec<u8>) {
         NetworkMessage::Block { .. } => ("block".to_string(), Vec::new()),
         NetworkMessage::Addr { .. } => ("addr".to_string(), Vec::new()),
         NetworkMessage::GetAddr => ("getaddr".to_string(), Vec::new()),
+        NetworkMessage::PackageTx { .. } => ("pkgtxns".to_string(), Vec::new()),
+        NetworkMessage::SendPackages { version } => {
+            ("sendpackages".to_string(), version.to_le_bytes().to_vec())
+        }
     }
 }
 

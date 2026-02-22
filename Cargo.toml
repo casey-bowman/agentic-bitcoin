@@ -16,8 +16,11 @@ description = "A from-scratch reimplementation of Bitcoin Core in Rust with hexa
 license = "MIT"
 repository = "https://github.com/casey-bowman/agentic-bitcoin"
 homepage = "https://github.com/casey-bowman/agentic-bitcoin"
+readme = "README.md"
 keywords = ["bitcoin", "agentic", "clean-architecture", "hexagonal", "ports-and-adapters"]
 categories = ["cryptography::cryptocurrencies"]
+authors = ["Casey Bowman <case.bowman@gmail.com>", "Claude Opus 4.6"]
+rust-version = "1.84"
 
 [dependencies]
 abtc-infrastructure = { path = "crates/abtc-infrastructure", version = "0.1.0" }

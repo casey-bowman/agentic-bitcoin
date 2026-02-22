@@ -16,10 +16,14 @@
 use abtc_domain::consensus::rules;
 use abtc_domain::crypto::signing::TransactionSignatureChecker;
 use abtc_domain::policy::limits::MempoolLimits;
-use abtc_domain::primitives::{Amount, Transaction};
+use abtc_domain::primitives::{Amount, Sequence, Transaction};
 use abtc_domain::script::{verify_script_with_witness, ScriptFlags};
-use abtc_ports::{ChainStateStore, MempoolPort};
+use abtc_ports::{ChainStateStore, MempoolPort, UtxoEntry};
 use std::sync::Arc;
+
+/// BIP113: lock_time values below this threshold are interpreted as block
+/// heights; at or above it they are interpreted as Unix timestamps.
+const LOCKTIME_THRESHOLD: u32 = 500_000_000;
 
 /// Errors that can occur during mempool acceptance.
 #[derive(Debug)]
@@ -76,8 +80,7 @@ pub struct MempoolAcceptor {
     chain_state: Arc<dyn ChainStateStore>,
     mempool: Arc<dyn MempoolPort>,
     /// Configurable policy limits for ancestor/descendant checks.
-    #[allow(dead_code)]
-    limits: MempoolLimits,
+    _limits: MempoolLimits,
     /// Whether to verify scripts (can be disabled for testing).
     verify_scripts: bool,
 }
@@ -91,7 +94,7 @@ impl MempoolAcceptor {
         MempoolAcceptor {
             chain_state,
             mempool,
-            limits: MempoolLimits::default(),
+            _limits: MempoolLimits::default(),
             verify_scripts: true,
         }
     }
@@ -105,7 +108,7 @@ impl MempoolAcceptor {
         MempoolAcceptor {
             chain_state,
             mempool,
-            limits,
+            _limits: limits,
             verify_scripts: true,
         }
     }
@@ -166,6 +169,53 @@ impl MempoolAcceptor {
         }
 
         let fee = total_input_value - total_output_value;
+
+        // 3b. BIP65 — absolute locktime validation
+        //     If lock_time > 0, at least one input must be non-final.
+        //     If lock_time is a block height (< 500M), it must not exceed
+        //     the current chain tip height + 1 (the next block).
+        if tx.lock_time > 0 {
+            let all_final = tx.inputs.iter().all(|inp| inp.sequence == Sequence::FINAL);
+            if all_final {
+                return Err(AcceptError::ConsensusViolation(
+                    "non-zero lock_time but all inputs are final".into(),
+                ));
+            }
+
+            let (_tip_hash, tip_height) = self
+                .chain_state
+                .get_best_chain_tip()
+                .await
+                .map_err(|e| AcceptError::ConsensusViolation(e.to_string()))?;
+
+            if tx.lock_time < LOCKTIME_THRESHOLD {
+                // Block-height lock: tx is valid for inclusion in the *next* block.
+                let next_height = tip_height + 1;
+                if tx.lock_time > next_height {
+                    return Err(AcceptError::PolicyViolation(format!(
+                        "locktime {} exceeds next block height {}",
+                        tx.lock_time, next_height
+                    )));
+                }
+            }
+            // Timestamp-based locktimes (>= 500M) would need MTP comparison.
+            // TODO: add MTP access to ChainStateStore and check here.
+        }
+
+        // 3c. BIP68 — relative locktime (sequence) validation
+        //     For tx version >= 2, each input whose sequence does not have
+        //     the LOCKTIME_DISABLE_FLAG set encodes a relative lock. If the
+        //     type flag is clear, the masked value is a block count; the
+        //     input's UTXO must be buried by at least that many blocks.
+        if tx.version >= 2 {
+            let (_tip_hash, tip_height) = self
+                .chain_state
+                .get_best_chain_tip()
+                .await
+                .map_err(|e| AcceptError::ConsensusViolation(e.to_string()))?;
+
+            Self::check_sequence_locks(tx, &input_utxos, tip_height)?;
+        }
 
         // 4. Estimate tx weight/vsize and check policy
         let vsize = Self::estimate_vsize(tx);
@@ -229,6 +279,45 @@ impl MempoolAcceptor {
             vsize,
             fee_rate,
         })
+    }
+
+    /// Check BIP68 relative locktime constraints for all inputs.
+    ///
+    /// For each input whose sequence does not have `LOCKTIME_DISABLE_FLAG` set:
+    /// - If `LOCKTIME_TYPE_FLAG` is clear, the masked value is a block count.
+    ///   The UTXO must be at least that many blocks deep (tip_height - utxo_height >= required).
+    /// - If `LOCKTIME_TYPE_FLAG` is set, the masked value is in 512-second units.
+    ///   Full validation requires MTP; for now we only enforce block-based locks.
+    fn check_sequence_locks(
+        tx: &Transaction,
+        input_utxos: &[UtxoEntry],
+        tip_height: u32,
+    ) -> Result<(), AcceptError> {
+        for (idx, input) in tx.inputs.iter().enumerate() {
+            let seq = input.sequence;
+
+            // Skip if disable flag is set or sequence is final
+            if seq & Sequence::LOCKTIME_DISABLE_FLAG != 0 || seq == Sequence::FINAL {
+                continue;
+            }
+
+            let utxo_height = input_utxos[idx].height;
+
+            if seq & Sequence::LOCKTIME_TYPE_FLAG == 0 {
+                // Block-based relative lock
+                let required_blocks = seq & Sequence::LOCKTIME_MASK;
+                let depth = tip_height.saturating_sub(utxo_height);
+                if depth < required_blocks {
+                    return Err(AcceptError::PolicyViolation(format!(
+                        "input {} requires {} blocks of depth but UTXO only has {} (BIP68)",
+                        idx, required_blocks, depth
+                    )));
+                }
+            }
+            // Time-based relative locks (LOCKTIME_TYPE_FLAG set) require MTP.
+            // TODO: enforce when MTP is available through ChainStateStore.
+        }
+        Ok(())
     }
 
     /// Estimate virtual size (vsize) of a transaction.
@@ -696,5 +785,190 @@ mod tests {
             result.unwrap_err(),
             AcceptError::MempoolRejection(_)
         ));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Regression tests — Session 15 (review finding #22: locktime/sequence)
+    //
+    // These tests verify BIP65 absolute locktime and BIP68 relative
+    // locktime enforcement during mempool acceptance.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn regression_locktime_future_block_rejected() {
+        let chain_state = Arc::new(MockChainState::new());
+        let mempool = Arc::new(MockMempool::new());
+
+        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x10; 32]));
+        chain_state
+            .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
+            .await;
+
+        let mut acceptor = MempoolAcceptor::new(chain_state, mempool);
+        acceptor.set_verify_scripts(false);
+
+        // lock_time = 1000 but chain tip is at height 0 → next block is 1
+        let tx = Transaction::new(
+            1,
+            vec![TxIn::new(
+                OutPoint::new(funding_txid, 0),
+                Script::new(),
+                Sequence::MAX_NONFINAL, // non-final to activate locktime
+            )],
+            vec![TxOut::new(Amount::from_sat(90_000), Script::new())],
+            1000, // lock_time = block 1000
+        );
+
+        let result = acceptor.accept_transaction(&tx).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("locktime"), "error was: {}", err);
+    }
+
+    #[tokio::test]
+    async fn regression_locktime_all_final_rejected() {
+        let chain_state = Arc::new(MockChainState::new());
+        let mempool = Arc::new(MockMempool::new());
+
+        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x11; 32]));
+        chain_state
+            .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
+            .await;
+
+        let mut acceptor = MempoolAcceptor::new(chain_state, mempool);
+        acceptor.set_verify_scripts(false);
+
+        // lock_time > 0 but all inputs are final → invalid
+        let tx = Transaction::new(
+            1,
+            vec![TxIn::final_input(
+                OutPoint::new(funding_txid, 0),
+                Script::new(),
+            )],
+            vec![TxOut::new(Amount::from_sat(90_000), Script::new())],
+            100, // non-zero locktime
+        );
+
+        let result = acceptor.accept_transaction(&tx).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("all inputs are final"), "error was: {}", err);
+    }
+
+    #[tokio::test]
+    async fn regression_locktime_zero_accepted() {
+        let chain_state = Arc::new(MockChainState::new());
+        let mempool = Arc::new(MockMempool::new());
+
+        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x12; 32]));
+        chain_state
+            .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
+            .await;
+
+        let mut acceptor = MempoolAcceptor::new(chain_state, mempool);
+        acceptor.set_verify_scripts(false);
+
+        // lock_time = 0 → no locktime check
+        let tx = Transaction::v1(
+            vec![TxIn::final_input(
+                OutPoint::new(funding_txid, 0),
+                Script::new(),
+            )],
+            vec![TxOut::new(Amount::from_sat(90_000), Script::new())],
+            0,
+        );
+
+        assert!(acceptor.accept_transaction(&tx).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn regression_bip68_relative_lock_rejected() {
+        let chain_state = Arc::new(MockChainState::new());
+        let mempool = Arc::new(MockMempool::new());
+
+        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x13; 32]));
+        // UTXO confirmed at height 0; chain tip is also 0 → depth = 0
+        chain_state
+            .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
+            .await;
+
+        let mut acceptor = MempoolAcceptor::new(chain_state, mempool);
+        acceptor.set_verify_scripts(false);
+
+        // Version 2 tx with sequence encoding "10 blocks relative lock"
+        // (no disable flag, no type flag, masked value = 10)
+        let relative_lock_sequence = 10u32; // 10 blocks
+        let tx = Transaction::new(
+            2,
+            vec![TxIn::new(
+                OutPoint::new(funding_txid, 0),
+                Script::new(),
+                relative_lock_sequence,
+            )],
+            vec![TxOut::new(Amount::from_sat(90_000), Script::new())],
+            0,
+        );
+
+        let result = acceptor.accept_transaction(&tx).await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("BIP68"), "error was: {}", err);
+    }
+
+    #[tokio::test]
+    async fn regression_bip68_disabled_flag_accepted() {
+        let chain_state = Arc::new(MockChainState::new());
+        let mempool = Arc::new(MockMempool::new());
+
+        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x14; 32]));
+        chain_state
+            .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
+            .await;
+
+        let mut acceptor = MempoolAcceptor::new(chain_state, mempool);
+        acceptor.set_verify_scripts(false);
+
+        // Sequence with disable flag set → BIP68 doesn't apply
+        let seq_disabled = Sequence::LOCKTIME_DISABLE_FLAG | 10;
+        let tx = Transaction::new(
+            2,
+            vec![TxIn::new(
+                OutPoint::new(funding_txid, 0),
+                Script::new(),
+                seq_disabled,
+            )],
+            vec![TxOut::new(Amount::from_sat(90_000), Script::new())],
+            0,
+        );
+
+        assert!(acceptor.accept_transaction(&tx).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn regression_bip68_v1_tx_skips_sequence_check() {
+        let chain_state = Arc::new(MockChainState::new());
+        let mempool = Arc::new(MockMempool::new());
+
+        let funding_txid = Txid::from_hash(abtc_domain::primitives::Hash256::from_bytes([0x15; 32]));
+        chain_state
+            .add_utxo(funding_txid, 0, make_funding_utxo(100_000))
+            .await;
+
+        let mut acceptor = MempoolAcceptor::new(chain_state, mempool);
+        acceptor.set_verify_scripts(false);
+
+        // Version 1 tx — BIP68 relative locks don't apply regardless of sequence
+        let tx = Transaction::new(
+            1,
+            vec![TxIn::new(
+                OutPoint::new(funding_txid, 0),
+                Script::new(),
+                10, // Would be a 10-block relative lock in v2
+            )],
+            vec![TxOut::new(Amount::from_sat(90_000), Script::new())],
+            0,
+        );
+
+        assert!(acceptor.accept_transaction(&tx).await.is_ok());
     }
 }

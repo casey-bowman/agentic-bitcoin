@@ -72,6 +72,16 @@ pub enum NetworkMessage {
     },
     /// GetAddr message - requests addresses of peers
     GetAddr,
+    /// PackageTx message — transmit a package of related transactions (BIP331).
+    /// Transactions are in topological order (parents before children).
+    PackageTx {
+        transactions: Vec<Transaction>,
+    },
+    /// SendPackages message — negotiate package relay support (BIP331).
+    /// Sent during version handshake to indicate support.
+    SendPackages {
+        version: u32,
+    },
 }
 
 /// Inventory item identifying a transaction or block.

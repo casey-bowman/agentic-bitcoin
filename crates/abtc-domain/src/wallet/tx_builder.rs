@@ -257,6 +257,7 @@ impl TransactionBuilder {
                     // 1. Compute script-path sighash with tapleaf hash
                     let sighash = checker.compute_taproot_sighash_script_path(
                         &script_path.leaf_hash,
+                        0x00, // SIGHASH_DEFAULT
                     );
 
                     // 2. Sign with the raw (untweaked) internal key for script-path
@@ -273,7 +274,7 @@ impl TransactionBuilder {
                     tx.inputs[i].witness = witness;
                 } else {
                     // KEY-PATH spending (BIP341)
-                    let sighash = checker.compute_taproot_sighash();
+                    let sighash = checker.compute_taproot_sighash(0x00); // SIGHASH_DEFAULT
 
                     let (sig, _output_key) = crate::crypto::schnorr::sign_schnorr_tweaked(
                         key.inner(),
@@ -659,7 +660,7 @@ mod tests {
             script_pubkey,
         }];
         let checker = TransactionSignatureChecker::new_taproot(&tx, 0, spent_outputs);
-        let sighash = checker.compute_taproot_sighash();
+        let sighash = checker.compute_taproot_sighash(0x00); // SIGHASH_DEFAULT
 
         let sig = tx.inputs[0].witness.get(0).unwrap();
         assert!(crate::crypto::schnorr::verify_schnorr(

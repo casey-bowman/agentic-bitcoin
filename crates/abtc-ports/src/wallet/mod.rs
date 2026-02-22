@@ -3,8 +3,12 @@
 //! This module defines the port traits for wallet functionality.
 //! Implementations handle key management, transaction creation, and signing.
 
+pub mod store;
+
 use abtc_domain::primitives::{Transaction, Amount, OutPoint, TxOut};
 use std::error::Error;
+
+pub use store::{WalletStore, WalletSnapshot, WalletKeyEntry, WalletUtxoEntry};
 
 /// Represents a wallet's balance broken down by confirmation status.
 #[derive(Clone, Debug, PartialEq, Eq)]

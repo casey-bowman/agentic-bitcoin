@@ -73,6 +73,16 @@ impl BlockStore for InMemoryBlockStore {
         let mut heights = self.block_heights.write().await;
         heights.insert(block_hash, height);
 
+        // Update best block hash if this block extends the chain
+        let current_best_height = {
+            let best = self.best_block_hash.read().await;
+            heights.get(&*best).copied().unwrap_or(0)
+        };
+        if height > current_best_height {
+            let mut best = self.best_block_hash.write().await;
+            *best = block_hash;
+        }
+
         tracing::debug!("Stored block {} at height {}", block_hash, height);
         Ok(())
     }
@@ -501,5 +511,54 @@ mod tests {
         let (tip, height) = store.get_best_chain_tip().await.unwrap();
         assert_eq!(tip, genesis_hash);
         assert_eq!(height, 0);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Regression tests — Session 14, Part 4 (code review fixes)
+    //
+    // These tests were written specifically for this implementation to
+    // guard against bugs found during a code review. They are NOT ports
+    // of Bitcoin Core test vectors. Each test name begins with
+    // `regression_` so it can be distinguished from the implementation
+    // unit tests above, which exercise baseline functionality.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn regression_store_block_updates_best_block_hash() {
+        // Review finding #8: store_block never updated best_block_hash, so
+        // get_best_block_hash always returned BlockHash::zero().
+        let store = InMemoryBlockStore::new();
+
+        let b1 = make_block(BlockHash::zero(), 1);
+        let h1 = b1.block_hash();
+        store.store_block(&b1, 1).await.unwrap();
+
+        let best = store.get_best_block_hash().await.unwrap();
+        assert_eq!(best, h1, "best block hash should update after store_block");
+
+        // Storing a higher block should update again.
+        let b2 = make_block(h1, 2);
+        let h2 = b2.block_hash();
+        store.store_block(&b2, 2).await.unwrap();
+
+        let best = store.get_best_block_hash().await.unwrap();
+        assert_eq!(best, h2, "best block hash should follow the highest block");
+    }
+
+    #[tokio::test]
+    async fn regression_store_block_does_not_regress_best_hash() {
+        // Safety net: storing a block at a lower height must NOT demote
+        // the best block hash.
+        let store = InMemoryBlockStore::new();
+
+        let b1 = make_block(BlockHash::zero(), 1);
+        let h1 = b1.block_hash();
+        store.store_block(&b1, 10).await.unwrap();
+
+        let b2 = make_block(BlockHash::zero(), 99);
+        store.store_block(&b2, 5).await.unwrap(); // lower height
+
+        let best = store.get_best_block_hash().await.unwrap();
+        assert_eq!(best, h1, "best block hash should not regress to a lower height");
     }
 }

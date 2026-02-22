@@ -1,9 +1,18 @@
-//! In-Memory Wallet Implementation
+//! Wallet Implementations
 //!
-//! Provides a real wallet that manages private keys, tracks UTXOs,
-//! creates and signs transactions. Suitable for testing and development.
+//! Provides wallet adapters:
+//! - `InMemoryWallet`: In-memory wallet for testing and development
+//! - `FileBasedWalletStore`: JSON file persistence for wallet state
+//! - `PersistentWallet`: Wraps InMemoryWallet with automatic file persistence
+//!
 //! Production wallets should use secure key storage (hardware wallets,
 //! encrypted DBs, etc.).
+
+pub mod file_store;
+pub mod persistent;
+
+pub use file_store::FileBasedWalletStore;
+pub use persistent::PersistentWallet;
 
 use async_trait::async_trait;
 use abtc_domain::primitives::{Amount, OutPoint, Transaction, TxOut};
@@ -16,6 +25,7 @@ use abtc_domain::wallet::tx_builder::{
     TX_OVERHEAD_VSIZE,
 };
 use abtc_ports::wallet::UnspentOutput;
+use abtc_ports::wallet::store::{WalletSnapshot, WalletKeyEntry, WalletUtxoEntry};
 use abtc_ports::{Balance, WalletPort};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,8 +41,7 @@ struct WalletKey {
     private_key: PrivateKey,
     /// The derived address
     address: Address,
-    /// Optional label
-    #[allow(dead_code)]
+    /// Optional label for wallet export/display.
     label: Option<String>,
 }
 
@@ -111,6 +120,180 @@ impl InMemoryWallet {
             // Default to P2WPKH size
             P2WPKH_INPUT_VSIZE
         }
+    }
+
+    /// Whether this wallet uses mainnet addresses.
+    pub fn is_mainnet(&self) -> bool {
+        self.mainnet
+    }
+
+    /// Get the preferred address type as a string.
+    pub fn address_type_str(&self) -> &str {
+        match self.address_type {
+            AddressType::P2PKH => "p2pkh",
+            AddressType::P2WPKH => "p2wpkh",
+            AddressType::P2shP2wpkh => "p2sh-p2wpkh",
+            AddressType::P2TR => "p2tr",
+        }
+    }
+
+    /// Parse an address type string back into an AddressType variant.
+    pub fn parse_address_type(s: &str) -> Option<AddressType> {
+        match s {
+            "p2pkh" => Some(AddressType::P2PKH),
+            "p2wpkh" => Some(AddressType::P2WPKH),
+            "p2sh-p2wpkh" => Some(AddressType::P2shP2wpkh),
+            "p2tr" => Some(AddressType::P2TR),
+            _ => None,
+        }
+    }
+
+    /// Create a snapshot of the current wallet state for persistence.
+    ///
+    /// Serializes keys (as WIF), UTXOs (as hex), and metadata into a
+    /// plain data container that can be saved to disk.
+    pub async fn snapshot(&self) -> WalletSnapshot {
+        let keys = self.keys.read().await;
+        let utxos = self.utxos.read().await;
+        let counter = self.key_counter.read().await;
+
+        let key_entries: Vec<WalletKeyEntry> = keys
+            .iter()
+            .map(|(addr, wk)| WalletKeyEntry {
+                address: addr.clone(),
+                wif: wk.private_key.to_wif(),
+                label: wk.label.clone(),
+            })
+            .collect();
+
+        let utxo_entries: Vec<WalletUtxoEntry> = utxos
+            .iter()
+            .map(|u| {
+                let script_bytes = u.output.script_pubkey.as_bytes();
+                let script_hex: String = script_bytes
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
+
+                WalletUtxoEntry {
+                    txid_hex: u.outpoint.txid.to_hex_reversed(),
+                    vout: u.outpoint.vout,
+                    amount_sat: u.output.value.as_sat(),
+                    script_pubkey_hex: script_hex,
+                    confirmations: u.confirmations,
+                    is_coinbase: u.is_coinbase,
+                }
+            })
+            .collect();
+
+        WalletSnapshot {
+            version: 1,
+            mainnet: self.mainnet,
+            address_type: self.address_type_str().to_string(),
+            key_counter: *counter,
+            keys: key_entries,
+            utxos: utxo_entries,
+        }
+    }
+
+    /// Restore wallet state from a previously saved snapshot.
+    ///
+    /// Parses WIF keys, reconstructs addresses, rebuilds UTXOs, and
+    /// restores the key counter. Existing state is replaced.
+    pub async fn restore_from_snapshot(
+        &self,
+        snapshot: &WalletSnapshot,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Restore keys
+        let mut keys = self.keys.write().await;
+        keys.clear();
+
+        for entry in &snapshot.keys {
+            let private_key = PrivateKey::from_wif(&entry.wif)
+                .map_err(|e| format!("failed to parse WIF for {}: {}", entry.address, e))?;
+
+            let address = Address::decode(&entry.address)
+                .map_err(|e| format!("failed to decode address {}: {}", entry.address, e))?;
+
+            keys.insert(
+                entry.address.clone(),
+                WalletKey {
+                    private_key,
+                    address,
+                    label: entry.label.clone(),
+                },
+            );
+        }
+
+        // Restore UTXOs
+        let mut utxos = self.utxos.write().await;
+        utxos.clear();
+
+        for entry in &snapshot.utxos {
+            // Parse txid from reversed hex (display format) back to internal bytes
+            let txid_hex_raw = Self::reverse_hex(&entry.txid_hex)
+                .ok_or_else(|| format!("invalid txid hex: {}", entry.txid_hex))?;
+            let txid = abtc_domain::Txid::from_hex(&txid_hex_raw)
+                .ok_or_else(|| format!("failed to parse txid: {}", entry.txid_hex))?;
+
+            // Parse script pubkey from hex
+            let script_bytes = Self::hex_to_bytes(&entry.script_pubkey_hex)
+                .ok_or_else(|| {
+                    format!("invalid script hex: {}", entry.script_pubkey_hex)
+                })?;
+
+            utxos.push(UnspentOutput {
+                outpoint: OutPoint::new(txid, entry.vout),
+                output: TxOut::new(
+                    Amount::from_sat(entry.amount_sat),
+                    abtc_domain::Script::from_bytes(script_bytes),
+                ),
+                confirmations: entry.confirmations,
+                is_coinbase: entry.is_coinbase,
+            });
+        }
+
+        // Restore key counter
+        let mut counter = self.key_counter.write().await;
+        *counter = snapshot.key_counter;
+
+        tracing::info!(
+            "Restored wallet: {} keys, {} UTXOs, counter={}",
+            keys.len(),
+            utxos.len(),
+            snapshot.key_counter
+        );
+
+        Ok(())
+    }
+
+    /// Reverse a hex string byte-by-byte (e.g., "aabb" → "bbaa").
+    fn reverse_hex(hex: &str) -> Option<String> {
+        if hex.len() % 2 != 0 {
+            return None;
+        }
+        let mut result = String::with_capacity(hex.len());
+        for i in (0..hex.len()).rev().step_by(2) {
+            if i == 0 {
+                result.push_str(&hex[0..2]);
+            } else {
+                result.push_str(&hex[i - 1..i + 1]);
+            }
+        }
+        Some(result)
+    }
+
+    /// Parse a hex string into bytes.
+    fn hex_to_bytes(hex: &str) -> Option<Vec<u8>> {
+        if hex.len() % 2 != 0 {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(hex.len() / 2);
+        for i in (0..hex.len()).step_by(2) {
+            let byte = u8::from_str_radix(&hex[i..i + 2], 16).ok()?;
+            bytes.push(byte);
+        }
+        Some(bytes)
     }
 }
 

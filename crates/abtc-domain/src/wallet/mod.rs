@@ -15,6 +15,7 @@
 pub mod keys;
 pub mod address;
 pub mod coin_selection;
+pub mod descriptors;
 pub mod hd;
 pub mod psbt;
 pub mod tx_builder;
@@ -22,6 +23,10 @@ pub mod tx_builder;
 pub use keys::{PrivateKey, PublicKey, KeyError};
 pub use address::{Address, AddressType, AddressError};
 pub use coin_selection::{CoinSelector, SelectionStrategy, CoinSelectionResult};
+pub use descriptors::{
+    Descriptor, DescriptorKey, parse_descriptor, add_checksum,
+    ParseError as DescriptorParseError, DescriptorError,
+};
 pub use hd::{ExtendedPrivateKey, ExtendedPublicKey, HdError, parse_derivation_path, HARDENED_OFFSET};
 pub use psbt::{Psbt, PsbtInput, PsbtOutput, PsbtError, Bip32Derivation};
 pub use tx_builder::{TransactionBuilder, BuilderError, TapScriptPath};

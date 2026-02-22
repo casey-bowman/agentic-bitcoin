@@ -5,10 +5,14 @@
 
 pub mod chain_params;
 pub mod consensus;
+pub mod covenants;
 pub mod crypto;
+pub mod filters;
 pub mod primitives;
+pub mod protocol;
 pub mod script;
 pub mod policy;
+pub mod utxo;
 pub mod wallet;
 
 // Re-export common types for convenience
@@ -25,3 +29,6 @@ pub use script::{
     NoSigChecker, verify_script, verify_script_with_witness, is_push_only,
 };
 pub use crypto::signing::{TransactionSignatureChecker, verify_ecdsa};
+
+// Re-export secp256k1 for downstream crates that need key types
+pub use secp256k1;
