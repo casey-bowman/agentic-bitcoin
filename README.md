@@ -101,4 +101,4 @@ A future "Full" variant will add the infrastructure needed for mainnet-scale loa
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE-MIT](LICENSE-MIT) for details.

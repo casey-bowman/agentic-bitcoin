@@ -137,4 +137,4 @@
 //!
 //! ## License
 //!
-//! MIT — see the LICENSE file for details.
+//! MIT — see the LICENSE-MIT file for details.
