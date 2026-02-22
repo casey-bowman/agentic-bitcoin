@@ -138,6 +138,19 @@ The "Lite" versions are correct — they implement the same algorithms, validate
 
 ## Session Log
 
+### Session 16 — License Cleanup, Clippy/Docs, Publishing, Documentation Hygiene
+
+- **License attribution** — researched upstream projects (secp256k1, ctaes, libminisketch, LevelDB, CRC32C) and added a recognition section to LICENSE-MIT. Removed Bitcoin Core/Satoshi copyright lines (correct for a clean-room reimplementation). Changed "based on" to "a Rust reimplementation of the Bitcoin protocol as defined by".
+- **Renamed LICENSE → LICENSE-MIT** — updated README.md and src/lib.rs references; kept `license = "MIT"` in Cargo.toml files for crates.io badge visibility.
+- **cargo clippy** — fixed all 74+ warnings across the workspace (needless borrows, redundant closures, collapsible ifs, manual div_ceil, range loops, etc.). Used `#[allow]` attributes where clippy suggestions would break semantics.
+- **cargo doc** — created `src/lib.rs` documentation hub with architecture diagram and cross-references. Fixed ~44 rustdoc warnings (bracket escaping, HTML angle brackets, bare URLs, private item links).
+- **Published v0.1.0 to crates.io** — all 6 crates (agentic-bitcoin, abtc-domain, abtc-ports, abtc-adapters, abtc-application, abtc-infrastructure). Tagged repo with `v0.1.0`. Created GitHub pre-release.
+- **Version bumped to v0.2.0** — all package versions and inter-crate dependency versions across all 6 Cargo.toml files.
+- **Created README.md files** for 4 workspace crates (abtc-ports, abtc-adapters, abtc-application, abtc-infrastructure). abtc-domain already had one. Added `readme = "README.md"` to all Cargo.toml files.
+- **Documentation cleanup** — updated DOMAIN_LAYER_OVERVIEW.md (full 60-module directory tree, accurate stats: ~30,800 source lines, ~2,660 test lines, 11 top-level modules). Updated DOMAIN_CODE_EXAMPLES.md (fixed all `btc_domain` → `abtc_domain` imports, added examples for script execution, Schnorr, taproot, HD keys, addresses, coin selection, PSBT, descriptors, RBF, compact block filters). Updated TESTING.md test count (995+ → 1,103). Deleted redundant files: COMPLETE_DOMAIN_LAYER.txt, IMPLEMENTATION_CHECKLIST.md, crates/abtc-domain/STRUCTURE.md, crates/abtc-domain/FILES_CREATED.txt.
+- **Current documentation set**: README.md, CRATES.md, DOMAIN_LAYER_OVERVIEW.md, DOMAIN_CODE_EXAMPLES.md, TESTING.md, SESSION_NOTES.md, reviews/, per-crate README.md files.
+- **bitcoin-rust folder** — excluded from all future work per user request (Session 15).
+
 ### Session 15 — BIP324, Package Relay, Infrastructure Hardening, Refactor Pass
 - **BIP324 encrypted transport** (`abtc-domain/src/crypto/bip324.rs`, `abtc-adapters/src/network/v2/`):
   - Full v2 P2P handshake: ECDH key exchange, HKDF-SHA256 key derivation, ChaCha20-Poly1305 AEAD encryption/decryption
