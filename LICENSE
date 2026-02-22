@@ -1,11 +1,28 @@
 The MIT License (MIT)
 
-This software is based on Bitcoin Core (https://github.com/bitcoin/bitcoin).
+This software is a Rust reimplementation of the Bitcoin protocol as defined by
+Bitcoin Core (https://github.com/bitcoin/bitcoin).
 It is not endorsed by or affiliated with the Bitcoin Core developers.
 
+This software reimplements functionality originally found in the following
+projects, whose authors deserve recognition:
+
+  - secp256k1 (https://github.com/bitcoin-core/secp256k1)
+    Copyright (c) 2013 Pieter Wuille — MIT License
+
+  - ctaes (https://github.com/bitcoin-core/ctaes)
+    Copyright (c) 2016 Pieter Wuille — MIT License
+
+  - libminisketch (https://github.com/sipa/minisketch)
+    Copyright (c) 2018 Pieter Wuille, Greg Maxwell, Gleb Naumenko — MIT License
+
+  - LevelDB (https://github.com/google/leveldb)
+    Copyright (c) 2011 The LevelDB Authors (Sanjay Ghemawat, Jeff Dean) — BSD 3-Clause License
+
+  - CRC32C (https://github.com/google/crc32c)
+    Copyright 2017 The CRC32C Authors — BSD 2-Clause License
+
 Copyright (c) 2026 Casey Bowman
-Copyright (c) 2009-2026 The Bitcoin Core developers
-Copyright (c) 2009-2026 Bitcoin Developers
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
