@@ -283,7 +283,7 @@ impl Miniscript {
     /// Construct `thresh(k, subs)`.
     pub fn thresh(k: usize, subs: Vec<Miniscript>) -> Self {
         assert!(k >= 1 && k <= subs.len(), "thresh: k must be in 1..=n");
-        let sub_types: Vec<_> = subs.iter().map(|s| s.ty.clone()).collect();
+        let sub_types: Vec<_> = subs.iter().map(|s| s.ty).collect();
         let ty = super::types::type_thresh(k, &sub_types).expect("thresh: type check failed");
         Self {
             node: Terminal::Thresh(k, subs),

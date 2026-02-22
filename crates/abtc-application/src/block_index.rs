@@ -424,7 +424,7 @@ impl std::error::Error for BlockIndexError {}
 /// - Next 3 bytes = mantissa (coefficient)
 /// - target = mantissa * 256^(exponent-3)
 fn work_from_bits(bits: u32) -> u128 {
-    let exponent = (bits >> 24) as u32;
+    let exponent = bits >> 24;
     let mantissa = bits & 0x007fffff;
 
     if mantissa == 0 || exponent == 0 {

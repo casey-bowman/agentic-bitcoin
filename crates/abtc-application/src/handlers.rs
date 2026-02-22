@@ -52,7 +52,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .blockchain
                     .get_chain_info()
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
                 Ok(Some(Value::Number(info.height.into())))
             }
             "getbestblockhash" => {
@@ -60,7 +60,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .blockchain
                     .get_chain_info()
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
                 Ok(Some(Value::String(info.best_block_hash.to_hex_reversed())))
             }
             "getblockchaininfo" => {
@@ -68,7 +68,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .blockchain
                     .get_chain_info()
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
                 Ok(Some(json!({
                     "chain": "main",
                     "blocks": info.blocks,
@@ -87,7 +87,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .mempool
                     .get_mempool_info()
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
                 Ok(Some(json!({
                     "loaded": true,
                     "size": mempool_info.size,
@@ -103,7 +103,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .mempool
                     .get_mempool_contents()
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
                 Ok(Some(json!(contents)))
             }
             "getblockhash" => {
@@ -135,7 +135,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .blockchain
                     .get_block(&hash)
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?
+                    .map_err(abtc_ports::RpcError::internal_error)?
                     .ok_or_else(|| abtc_ports::RpcError {
                         code: -5,
                         message: "Block not found".to_string(),
@@ -231,7 +231,7 @@ impl RpcHandler for BlockchainRpcHandler {
                     .mempool
                     .submit_transaction(&tx)
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
 
                 Ok(Some(Value::String(txid_hex)))
             }
@@ -287,7 +287,7 @@ impl RpcHandler for BlockchainRpcHandler {
                 // Not in mempool — transaction not found (block store lookup would go here).
                 Err(abtc_ports::RpcError {
                     code: -5,
-                    message: format!("No such mempool or blockchain transaction. Use gettxoutsetinfo to query for unspent outputs."),
+                    message: "No such mempool or blockchain transaction. Use gettxoutsetinfo to query for unspent outputs.".to_string(),
                     data: None,
                 })
             }
@@ -510,7 +510,7 @@ impl RpcHandler for MiningRpcHandler {
                     .mining
                     .generate_block_template(&Script::new())
                     .await
-                    .map_err(|e| abtc_ports::RpcError::internal_error(e))?;
+                    .map_err(abtc_ports::RpcError::internal_error)?;
 
                 let total_fees: i64 = template.fees.iter().map(|f| f.as_sat()).sum();
 

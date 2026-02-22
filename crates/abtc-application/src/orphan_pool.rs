@@ -112,8 +112,7 @@ impl OrphanPool {
 
         // Evict if at capacity
         let evicted = if self.orphans.len() >= self.max_orphans {
-            let victim = self.evict_random();
-            victim
+            self.evict_random()
         } else {
             None
         };

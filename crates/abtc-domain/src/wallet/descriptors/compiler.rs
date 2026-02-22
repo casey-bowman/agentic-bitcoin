@@ -387,6 +387,7 @@ fn tweak_pubkey(
 }
 
 /// Compute the Taproot tree hash for a TrTree.
+#[allow(clippy::only_used_in_recursion)]
 fn compute_tr_tree_hash(tree: &TrTree, index: u32) -> Result<[u8; 32], DescriptorError> {
     match tree {
         TrTree::Leaf(ms) => {

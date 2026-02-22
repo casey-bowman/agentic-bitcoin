@@ -258,7 +258,7 @@ pub fn hash256(data: &[u8]) -> Hash256 {
     let first_hash = hasher.finalize();
 
     let mut hasher = Sha256::new();
-    hasher.update(&first_hash);
+    hasher.update(first_hash);
     let second_hash = hasher.finalize();
 
     let mut bytes = [0u8; 32];

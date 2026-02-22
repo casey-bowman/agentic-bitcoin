@@ -227,7 +227,7 @@ pub fn connect_block(
                     .get(outpoint)
                     .cloned()
                     .or_else(|| utxo_view.get_utxo(outpoint))
-                    .ok_or_else(|| ConnectBlockError::MissingUtxo(*outpoint))?;
+                    .ok_or(ConnectBlockError::MissingUtxo(*outpoint))?;
 
                 // Check coinbase maturity
                 if utxo.is_coinbase {

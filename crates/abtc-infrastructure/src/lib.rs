@@ -854,10 +854,12 @@ impl BitcoinNode {
 
     /// Get current node health status.
     pub async fn health(&self) -> NodeHealth {
-        let tracker = self.task_tracker.lock().unwrap();
-        let active_tasks = tracker.active_count() as u32;
-        let total_tasks = tracker.total;
-        drop(tracker);
+        let (active_tasks, total_tasks) = {
+            let tracker = self.task_tracker.lock().unwrap();
+            let active_tasks = tracker.active_count() as u32;
+            let total_tasks = tracker.total;
+            (active_tasks, total_tasks)
+        };
 
         let sm = self.sync_manager.read().await;
         let sync_state = format!("{:?}", sm.state());

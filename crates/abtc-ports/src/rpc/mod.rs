@@ -103,7 +103,7 @@ impl RpcError {
 
     /// Server error (code -32000 to -32099)
     pub fn server_error(code: i32, msg: impl Into<String>) -> Self {
-        let code = if code >= -32099 && code <= -32000 {
+        let code = if (-32099..=-32000).contains(&code) {
             code
         } else {
             -32000
@@ -274,7 +274,7 @@ pub mod rpc_helpers {
         value
             .as_array()
             .ok_or_else(|| "Expected array".to_string())
-            .map(|a| a.clone())
+            .cloned()
     }
 
     /// Converts a JSON value to an object, or returns an error.
@@ -282,6 +282,6 @@ pub mod rpc_helpers {
         value
             .as_object()
             .ok_or_else(|| "Expected object".to_string())
-            .map(|o| o.clone())
+            .cloned()
     }
 }

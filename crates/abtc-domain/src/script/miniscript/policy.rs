@@ -316,7 +316,7 @@ impl<'a> PolicyParser<'a> {
             )));
         }
         let hex_str = &rem[..hex_len];
-        let bytes = hex_decode(hex_str).map_err(|e| PolicyParseError::InvalidHash(e))?;
+        let bytes = hex_decode(hex_str).map_err(PolicyParseError::InvalidHash)?;
         self.advance(hex_len);
         Ok(bytes)
     }
@@ -331,7 +331,7 @@ impl<'a> PolicyParser<'a> {
             ));
         }
         let hex_str = &rem[..66];
-        let bytes = hex_decode(hex_str).map_err(|e| PolicyParseError::InvalidKey(e))?;
+        let bytes = hex_decode(hex_str).map_err(PolicyParseError::InvalidKey)?;
         let key = PublicKey::from_bytes(&bytes)
             .map_err(|_| PolicyParseError::InvalidKey("invalid pubkey bytes".to_string()))?;
         self.advance(66);

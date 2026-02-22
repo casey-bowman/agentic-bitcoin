@@ -220,8 +220,7 @@ impl AddressManager {
 
         // Select GETADDR_PERCENT% of addresses, up to MAX_ADDR_RESPONSE
         let target = (all.len() * GETADDR_PERCENT / 100)
-            .max(1)
-            .min(MAX_ADDR_RESPONSE);
+            .clamp(1, MAX_ADDR_RESPONSE);
 
         // Simple deterministic selection: use counter to pick starting offset
         self.selection_counter = self.selection_counter.wrapping_add(1);

@@ -210,14 +210,14 @@ pub fn parse_witness_solution(data: &[u8]) -> Result<Witness, SignetError> {
     let mut cursor = 0;
 
     let (count, consumed) =
-        read_compact_size(data, cursor).map_err(|e| SignetError::InvalidSolutionEncoding(e))?;
+        read_compact_size(data, cursor).map_err(SignetError::InvalidSolutionEncoding)?;
     cursor += consumed;
 
     let mut witness = Witness::new();
 
     for _ in 0..count {
         let (item_len, consumed) =
-            read_compact_size(data, cursor).map_err(|e| SignetError::InvalidSolutionEncoding(e))?;
+            read_compact_size(data, cursor).map_err(SignetError::InvalidSolutionEncoding)?;
         cursor += consumed;
 
         if cursor + item_len as usize > data.len() {
@@ -275,7 +275,7 @@ pub fn validate_signet_block(block: &Block, challenge: &Script) -> Result<(), Si
 
     verify_script_with_witness(
         &to_sign.inputs[0].script_sig, // empty
-        &challenge,                    // the challenge script
+        challenge,                     // the challenge script
         &to_sign.inputs[0].witness,    // the signet solution
         flags,
         &checker,
@@ -334,7 +334,7 @@ fn extract_push_data(bytes: &[u8]) -> Option<&[u8]> {
         // Direct push: 1–75 bytes
         1..=75 => {
             let len = first as usize;
-            if bytes.len() >= 1 + len {
+            if bytes.len() > len {
                 Some(&bytes[1..1 + len])
             } else {
                 None
@@ -494,7 +494,7 @@ pub fn sign_block_p2wpkh(
         if sb.is_empty() || sb[0] != Opcodes::OP_RETURN as u8 {
             return false;
         }
-        extract_push_data(&sb[1..]).map_or(false, |d| d.len() >= 4 && d[..4] == SIGNET_HEADER)
+        extract_push_data(&sb[1..]).is_some_and(|d| d.len() >= 4 && d[..4] == SIGNET_HEADER)
     });
     if !has_commitment {
         let placeholder = build_signet_commitment(&Witness::new());

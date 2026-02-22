@@ -430,16 +430,11 @@ fn decode_push_start(cursor: &mut Cursor) -> Result<Miniscript, DecodeError> {
 
         // Check what follows — could be part of a larger expression
         if !cursor.is_empty() {
-            let after = cursor.peek()?;
-            match after {
-                // OP_CHECKSIGADD → this is part of multi_a
-                // Actually we don't get here for multi_a — multi_a's first key
-                // uses OP_CHECKSIG, rest use OP_CHECKSIGADD
-                _ => {
-                    // Return as pk(key) = c:pk_k(key)
-                    return Ok(Miniscript::pk(key));
-                }
-            }
+            let _after = cursor.peek()?;
+            // OP_CHECKSIGADD → this is part of multi_a
+            // Actually we don't get here for multi_a — multi_a's first key
+            // uses OP_CHECKSIG, rest use OP_CHECKSIGADD
+            // Return as pk(key) = c:pk_k(key)
         }
         return Ok(Miniscript::pk(key));
     }

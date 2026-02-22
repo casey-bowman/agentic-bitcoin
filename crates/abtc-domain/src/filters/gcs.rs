@@ -199,6 +199,12 @@ impl BitWriter {
     }
 }
 
+impl Default for BitWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A bit-level reader that unpacks bits from bytes (MSB first).
 pub struct BitReader<'a> {
     data: &'a [u8],

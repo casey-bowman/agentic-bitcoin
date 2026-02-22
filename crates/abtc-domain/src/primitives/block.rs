@@ -264,7 +264,7 @@ fn compact_size(value: u64) -> Vec<u8> {
 
 /// Decode compact target representation to 128-bit value
 fn decode_compact(bits: u32) -> u128 {
-    let exponent = (bits >> 24) as u32;
+    let exponent = bits >> 24;
     let mantissa = bits & 0xffffff;
 
     if exponent <= 3 {

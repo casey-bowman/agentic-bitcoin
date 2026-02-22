@@ -280,6 +280,7 @@ impl SyncManager {
     }
 
     /// Handle an incoming Version message — validate and advance handshake.
+    #[allow(clippy::too_many_arguments)]
     async fn on_version(
         &mut self,
         peer_id: u64,
@@ -796,14 +797,13 @@ impl SyncManager {
         if self.blocks_to_download.is_empty()
             && self.blocks_in_flight.is_empty()
             && self.orphan_blocks.is_empty()
+            && self.state == SyncState::BlockSync
         {
-            if self.state == SyncState::BlockSync {
-                self.state = SyncState::Synced;
-                tracing::info!(
-                    "Chain sync complete at height {}",
-                    self.next_block_height - 1
-                );
-            }
+            self.state = SyncState::Synced;
+            tracing::info!(
+                "Chain sync complete at height {}",
+                self.next_block_height - 1
+            );
         }
 
         Ok(actions)

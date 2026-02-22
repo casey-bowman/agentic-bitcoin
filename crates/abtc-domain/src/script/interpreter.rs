@@ -1240,10 +1240,8 @@ impl<'a> ScriptInterpreter<'a> {
                         return Err(ScriptError::NegativeLocktime);
                     }
                     // If the disable flag (bit 31) is set, skip the check
-                    if sequence & (1 << 31) == 0 {
-                        if !self.checker.check_sequence(sequence) {
-                            return Err(ScriptError::UnsatisfiedLocktime);
-                        }
+                    if sequence & (1 << 31) == 0 && !self.checker.check_sequence(sequence) {
+                        return Err(ScriptError::UnsatisfiedLocktime);
                     }
                 }
 
@@ -1457,18 +1455,16 @@ pub fn verify_script_with_witness(
     // Step 4: Native witness program (BIP141)
     // If scriptPubKey is a witness program, verify the witness directly
     let mut had_witness = false;
-    if flags.has(ScriptFlags::VERIFY_WITNESS) {
-        if script_pubkey.is_witness_program() {
-            // For native witness, scriptSig MUST be empty
-            if !script_sig.is_empty() {
-                return Err(ScriptError::WitnessProgramMismatch);
-            }
-
-            let version = script_pubkey.witness_version().unwrap();
-            let program = script_pubkey.witness_program().unwrap();
-            verify_witness_program(witness, version, program, flags, checker)?;
-            had_witness = true;
+    if flags.has(ScriptFlags::VERIFY_WITNESS) && script_pubkey.is_witness_program() {
+        // For native witness, scriptSig MUST be empty
+        if !script_sig.is_empty() {
+            return Err(ScriptError::WitnessProgramMismatch);
         }
+
+        let version = script_pubkey.witness_version().unwrap();
+        let program = script_pubkey.witness_program().unwrap();
+        verify_witness_program(witness, version, program, flags, checker)?;
+        had_witness = true;
     }
 
     // Step 5: P2SH evaluation
@@ -1522,10 +1518,8 @@ pub fn verify_script_with_witness(
     // When a native witness program was verified, the main interpreter stack
     // legitimately holds 2 items (version + program), so we skip cleanstack.
     // Bitcoin Core likewise exempts the outer stack when witness was handled.
-    if flags.has(ScriptFlags::VERIFY_CLEANSTACK) && !had_witness {
-        if interp.stack.len() != 1 {
-            return Err(ScriptError::CleanStack);
-        }
+    if flags.has(ScriptFlags::VERIFY_CLEANSTACK) && !had_witness && interp.stack.len() != 1 {
+        return Err(ScriptError::CleanStack);
     }
 
     Ok(())
@@ -1536,7 +1530,7 @@ pub fn verify_script_with_witness(
 /// Dispatches to the appropriate verifier based on the witness version:
 /// - v0: P2WPKH (20-byte program) or P2WSH (32-byte program)
 /// - v1+: Future versions succeed if DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM
-///         is not set
+///   is not set
 fn verify_witness_program(
     witness: &Witness,
     version: u8,

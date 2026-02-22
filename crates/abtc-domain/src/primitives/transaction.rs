@@ -217,7 +217,7 @@ impl Transaction {
 
     /// Compute virtual size (weight in vbytes, rounded up)
     pub fn compute_vsize(&self) -> u32 {
-        (self.compute_weight() + 3) / 4
+        self.compute_weight().div_ceil(4)
     }
 
     /// Check if all inputs are final

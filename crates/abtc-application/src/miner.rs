@@ -243,7 +243,7 @@ fn build_coinbase_script(height: u32) -> Script {
             h >>= 8;
         }
         // If the top bit is set, add a zero byte to keep it positive.
-        if buf.last().map_or(false, |&b| b & 0x80 != 0) {
+        if buf.last().is_some_and(|&b| b & 0x80 != 0) {
             buf.push(0);
         }
         script.push(buf.len() as u8); // push length

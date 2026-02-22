@@ -336,6 +336,7 @@ impl BlockchainService {
         // Try to interpret the scriptSig as a single push of a witness program
         // P2SH-P2WPKH scriptSig: 0x16 0x0014{20-byte-hash} (23 bytes total)
         // P2SH-P2WSH scriptSig:  0x22 0x0020{32-byte-hash} (35 bytes total)
+        #[allow(clippy::if_same_then_else)]
         let inner = if bytes.len() == 23 && bytes[0] == 0x16 {
             &bytes[1..]
         } else if bytes.len() == 35 && bytes[0] == 0x22 {
@@ -351,7 +352,7 @@ impl BlockchainService {
             let version_byte = inner[0];
             let push_len = inner[1] as usize;
             let is_valid_version =
-                version_byte == 0x00 || (version_byte >= 0x51 && version_byte <= 0x60);
+                version_byte == 0x00 || (0x51..=0x60).contains(&version_byte);
             let is_valid_program =
                 (push_len == 20 || push_len == 32) && inner.len() == 2 + push_len;
             return is_valid_version && is_valid_program;

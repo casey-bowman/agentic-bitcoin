@@ -58,7 +58,7 @@ impl BlockAssembler {
                 buf.push((h & 0xff) as u8);
                 h >>= 8;
             }
-            if buf.last().map_or(false, |&b| b & 0x80 != 0) {
+            if buf.last().is_some_and(|&b| b & 0x80 != 0) {
                 buf.push(0);
             }
             script.push(buf.len() as u8);

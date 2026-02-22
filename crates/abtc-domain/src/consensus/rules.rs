@@ -241,7 +241,7 @@ fn compact_size(value: u64) -> Vec<u8> {
 
 /// Decode compact target representation to 128-bit value
 pub fn decode_compact(bits: u32) -> u128 {
-    let exponent = (bits >> 24) as u32;
+    let exponent = bits >> 24;
     let mantissa = bits & 0xffffff;
 
     if exponent <= 3 {
@@ -353,7 +353,7 @@ pub fn calculate_next_work(
     }
 
     // Extract mantissa and exponent from the old compact target.
-    let exponent = (prev_bits >> 24) as u32;
+    let exponent = prev_bits >> 24;
     let mantissa = prev_bits & 0x7fffff;
     let _negative = prev_bits & 0x800000 != 0;
 
@@ -388,8 +388,8 @@ pub fn calculate_next_work(
 /// Compare two compact targets: returns true if `a` represents a larger
 /// target (= easier difficulty) than `b`.
 fn compact_gt(a: u32, b: u32) -> bool {
-    let a_exp = (a >> 24) as u32;
-    let b_exp = (b >> 24) as u32;
+    let a_exp = a >> 24;
+    let b_exp = b >> 24;
     let a_man = a & 0x7fffff;
     let b_man = b & 0x7fffff;
 
@@ -447,8 +447,8 @@ pub fn encode_compact(target: u128) -> u32 {
 pub fn hash_to_u128(bytes: &[u8; 32]) -> u128 {
     // Take first 16 bytes and interpret as u128 (little-endian)
     let mut val = 0u128;
-    for i in 0..16 {
-        val |= (bytes[i] as u128) << (i * 8);
+    for (i, byte) in bytes[..16].iter().enumerate() {
+        val |= (*byte as u128) << (i * 8);
     }
     val
 }
@@ -475,8 +475,8 @@ pub fn decode_compact_u256(bits: u32) -> [u8; 32] {
     if exponent < 3 {
         let shifted = mantissa >> (8 * (3 - exponent));
         // After shifting, at most `exponent` bytes remain.
-        for i in 0..exponent {
-            target[i] = ((shifted >> (8 * i)) & 0xff) as u8;
+        for (i, target_byte) in target[..exponent].iter_mut().enumerate() {
+            *target_byte = ((shifted >> (8 * i)) & 0xff) as u8;
         }
     } else {
         let base = exponent - 3;

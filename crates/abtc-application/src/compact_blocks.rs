@@ -108,11 +108,11 @@ fn compute_siphash_keys(header: &BlockHeader, nonce: u64) -> (u64, u64) {
     let header_hash = header.block_hash();
     let mut hasher = Sha256::new();
     hasher.update(header_hash.as_bytes());
-    hasher.update(&nonce.to_le_bytes());
+    hasher.update(nonce.to_le_bytes());
     let first_hash = hasher.finalize();
 
     let mut hasher2 = Sha256::new();
-    hasher2.update(&first_hash);
+    hasher2.update(first_hash);
     let result = hasher2.finalize();
 
     let key0 = u64::from_le_bytes(result[0..8].try_into().unwrap());
@@ -244,6 +244,7 @@ impl CompactBlock {
 
         // Fill in from mempool using short IDs.
         let mut short_id_idx = 0;
+        #[allow(clippy::needless_range_loop)]
         for i in 0..total_tx_count {
             if transactions[i].is_some() {
                 continue; // already prefilled

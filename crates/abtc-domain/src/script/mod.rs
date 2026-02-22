@@ -3,10 +3,11 @@
 //! Corresponds to Bitcoin Core's script/ directory containing script types,
 //! opcodes, and the stack-based interpreter.
 
+#[allow(clippy::module_inception)]
+pub mod script;
 pub mod interpreter;
 pub mod miniscript;
 pub mod opcodes;
-pub mod script;
 pub mod witness;
 
 pub use interpreter::{

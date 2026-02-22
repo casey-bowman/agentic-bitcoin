@@ -403,7 +403,7 @@ pub fn estimate_package_tx_vsize(tx: &Transaction) -> u32 {
     }
 
     let weight = base_size * 4 + witness_size;
-    (weight + 3) / 4
+    weight.div_ceil(4)
 }
 
 #[cfg(test)]

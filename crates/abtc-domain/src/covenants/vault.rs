@@ -270,7 +270,7 @@ fn push_script_number(bytes: &mut Vec<u8>, n: i64) {
         bytes.push(0x00); // OP_0
         return;
     }
-    if n >= 1 && n <= 16 {
+    if (1..=16).contains(&n) {
         bytes.push(0x50 + n as u8); // OP_1 .. OP_16
         return;
     }

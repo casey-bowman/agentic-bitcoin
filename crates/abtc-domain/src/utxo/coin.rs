@@ -47,7 +47,7 @@ pub fn compress_amount(n: u64) -> u64 {
         e += 1;
     }
     if e < 9 {
-        let d = (n % 10) as u64;
+        let d = n % 10;
         // d is in [1..9] since we removed all trailing zeros and n > 0
         n /= 10;
         1 + (n * 9 + d - 1) * 10 + e as u64

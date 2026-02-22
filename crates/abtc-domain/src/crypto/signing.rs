@@ -149,7 +149,7 @@ impl<'a> TransactionSignatureChecker<'a> {
         let mut prevouts_hasher = Sha256::new();
         for input in &self.tx.inputs {
             prevouts_hasher.update(input.previous_output.txid.as_bytes());
-            prevouts_hasher.update(&input.previous_output.vout.to_le_bytes());
+            prevouts_hasher.update(input.previous_output.vout.to_le_bytes());
         }
         let sha_prevouts: [u8; 32] = prevouts_hasher.finalize().into();
 
@@ -164,7 +164,7 @@ impl<'a> TransactionSignatureChecker<'a> {
         // SHA256 of all amounts
         let mut amounts_hasher = Sha256::new();
         for so in spent {
-            amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
+            amounts_hasher.update(so.amount.as_sat().to_le_bytes());
         }
         let sha_amounts: [u8; 32] = amounts_hasher.finalize().into();
 
@@ -180,14 +180,14 @@ impl<'a> TransactionSignatureChecker<'a> {
         // SHA256 of all sequences
         let mut sequences_hasher = Sha256::new();
         for input in &self.tx.inputs {
-            sequences_hasher.update(&input.sequence.to_le_bytes());
+            sequences_hasher.update(input.sequence.to_le_bytes());
         }
         let sha_sequences: [u8; 32] = sequences_hasher.finalize().into();
 
         // SHA256 of all outputs
         let mut outputs_hasher = Sha256::new();
         for output in &self.tx.outputs {
-            outputs_hasher.update(&output.value.as_sat().to_le_bytes());
+            outputs_hasher.update(output.value.as_sat().to_le_bytes());
             let spk_bytes = output.script_pubkey.as_bytes();
             encode_compact_size_into(&mut outputs_hasher, spk_bytes.len());
             outputs_hasher.update(spk_bytes);
@@ -233,7 +233,7 @@ impl<'a> TransactionSignatureChecker<'a> {
         let mut prevouts_hasher = Sha256::new();
         for input in &self.tx.inputs {
             prevouts_hasher.update(input.previous_output.txid.as_bytes());
-            prevouts_hasher.update(&input.previous_output.vout.to_le_bytes());
+            prevouts_hasher.update(input.previous_output.vout.to_le_bytes());
         }
         let sha_prevouts: [u8; 32] = prevouts_hasher.finalize().into();
 
@@ -245,7 +245,7 @@ impl<'a> TransactionSignatureChecker<'a> {
 
         let mut amounts_hasher = Sha256::new();
         for so in spent {
-            amounts_hasher.update(&so.amount.as_sat().to_le_bytes());
+            amounts_hasher.update(so.amount.as_sat().to_le_bytes());
         }
         let sha_amounts: [u8; 32] = amounts_hasher.finalize().into();
 
@@ -259,13 +259,13 @@ impl<'a> TransactionSignatureChecker<'a> {
 
         let mut sequences_hasher = Sha256::new();
         for input in &self.tx.inputs {
-            sequences_hasher.update(&input.sequence.to_le_bytes());
+            sequences_hasher.update(input.sequence.to_le_bytes());
         }
         let sha_sequences: [u8; 32] = sequences_hasher.finalize().into();
 
         let mut outputs_hasher = Sha256::new();
         for output in &self.tx.outputs {
-            outputs_hasher.update(&output.value.as_sat().to_le_bytes());
+            outputs_hasher.update(output.value.as_sat().to_le_bytes());
             let spk_bytes = output.script_pubkey.as_bytes();
             encode_compact_size_into(&mut outputs_hasher, spk_bytes.len());
             outputs_hasher.update(spk_bytes);

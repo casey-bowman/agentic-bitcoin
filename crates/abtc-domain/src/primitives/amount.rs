@@ -83,7 +83,7 @@ impl std::ops::Mul<i64> for Amount {
 ///
 /// Checks that the value is non-negative and does not exceed MAX_MONEY.
 pub fn is_money_range(value: i64) -> bool {
-    value >= 0 && value <= MAX_MONEY
+    (0..=MAX_MONEY).contains(&value)
 }
 
 #[cfg(test)]

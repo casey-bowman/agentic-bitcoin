@@ -131,10 +131,11 @@ impl Num3072 {
         tmp[0] = d;
         let mut borrow = b as u64;
 
-        for i in 1..LIMBS {
+        for (i, tmp_i) in tmp[1..LIMBS].iter_mut().enumerate() {
+            let i = i + 1;
             let (d, b1) = self.limbs[i].overflowing_sub(u64::MAX);
             let (d, b2) = d.overflowing_sub(borrow);
-            tmp[i] = d;
+            *tmp_i = d;
             borrow = (b1 as u64) + (b2 as u64);
         }
 

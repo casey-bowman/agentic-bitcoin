@@ -16,7 +16,7 @@ pub fn hash256(data: &[u8]) -> Hash256 {
     let first_hash = hasher.finalize();
 
     let mut hasher = Sha256::new();
-    hasher.update(&first_hash);
+    hasher.update(first_hash);
     let second_hash = hasher.finalize();
 
     let mut bytes = [0u8; 32];
@@ -46,7 +46,7 @@ pub fn hash160(data: &[u8]) -> [u8; 20] {
     let sha256_hash = sha256_hasher.finalize();
 
     let mut ripemd_hasher = Ripemd160::new();
-    ripemd_hasher.update(&sha256_hash);
+    ripemd_hasher.update(sha256_hash);
     let hash160_result = ripemd_hasher.finalize();
 
     let mut bytes = [0u8; 20];
