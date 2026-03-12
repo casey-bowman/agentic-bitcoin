@@ -9,7 +9,7 @@
 
 use super::messages::*;
 use super::types::*;
-use crate::crypto::hashing::hash256;
+use crate::hashing::hash256;
 use crate::primitives::block::BlockHeader;
 use crate::primitives::hash::{BlockHash, Hash256};
 use crate::primitives::transaction::Transaction;

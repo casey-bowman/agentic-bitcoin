@@ -8,6 +8,7 @@ pub mod consensus;
 pub mod covenants;
 pub mod crypto;
 pub mod filters;
+pub mod hashing;
 pub mod policy;
 pub mod primitives;
 pub mod protocol;

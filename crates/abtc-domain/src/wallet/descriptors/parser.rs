@@ -506,7 +506,7 @@ mod tests {
     use super::*;
 
     fn dummy_key_hex(seed: u8) -> String {
-        use crate::crypto::hashing::sha256;
+        use crate::hashing::sha256;
         let hash = sha256(&[seed]);
         let mut secret = [0u8; 32];
         secret.copy_from_slice(hash.as_bytes());

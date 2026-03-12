@@ -8,7 +8,7 @@
 use std::fmt;
 
 use super::types::{BaseType, MiniscriptType};
-use crate::wallet::keys::PublicKey;
+use crate::primitives::PublicKey;
 
 // ---------------------------------------------------------------------------
 // Terminal — every possible miniscript fragment
@@ -469,11 +469,11 @@ mod hex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wallet::keys::PublicKey;
+    use crate::primitives::PublicKey;
 
     /// Helper: create a dummy compressed public key from a byte seed.
     fn dummy_key(seed: u8) -> PublicKey {
-        use crate::crypto::hashing::sha256;
+        use crate::hashing::sha256;
         let hash = sha256(&[seed]);
         let mut secret = [0u8; 32];
         secret.copy_from_slice(hash.as_bytes());

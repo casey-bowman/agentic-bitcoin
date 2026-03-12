@@ -3,8 +3,11 @@
 //! Private and public key types with WIF encoding/decoding,
 //! key derivation, and random key generation using secp256k1.
 
-use crate::crypto::hashing;
+use crate::hashing;
 use secp256k1::{Secp256k1, SecretKey};
+
+// Re-export PublicKey and KeyError from primitives (canonical definitions)
+pub use crate::primitives::public_key::{KeyError, PublicKey};
 
 /// A Bitcoin private key (secp256k1 scalar)
 #[derive(Clone)]
@@ -16,41 +19,6 @@ pub struct PrivateKey {
     /// Network prefix for WIF encoding (0x80 = mainnet, 0xEF = testnet)
     network_byte: u8,
 }
-
-/// A Bitcoin public key (secp256k1 point)
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PublicKey {
-    /// The raw secp256k1 public key
-    key: secp256k1::PublicKey,
-    /// Whether this is a compressed public key
-    compressed: bool,
-}
-
-/// Errors during key operations
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KeyError {
-    /// Invalid private key bytes (not a valid scalar)
-    InvalidPrivateKey,
-    /// Invalid public key bytes
-    InvalidPublicKey,
-    /// WIF decoding error
-    InvalidWif(String),
-    /// Checksum mismatch
-    ChecksumMismatch,
-}
-
-impl std::fmt::Display for KeyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            KeyError::InvalidPrivateKey => write!(f, "invalid private key"),
-            KeyError::InvalidPublicKey => write!(f, "invalid public key"),
-            KeyError::InvalidWif(msg) => write!(f, "invalid WIF: {}", msg),
-            KeyError::ChecksumMismatch => write!(f, "WIF checksum mismatch"),
-        }
-    }
-}
-
-impl std::error::Error for KeyError {}
 
 impl PrivateKey {
     /// Create a new private key from raw 32 bytes.
@@ -78,10 +46,7 @@ impl PrivateKey {
     pub fn public_key(&self) -> PublicKey {
         let secp = Secp256k1::new();
         let pk = secp256k1::PublicKey::from_secret_key(&secp, &self.key);
-        PublicKey {
-            key: pk,
-            compressed: self.compressed,
-        }
+        PublicKey::from_inner(pk, self.compressed)
     }
 
     /// Get the raw 32-byte secret key.
@@ -166,42 +131,6 @@ impl std::fmt::Debug for PrivateKey {
             self.compressed,
             self.is_mainnet()
         )
-    }
-}
-
-impl PublicKey {
-    /// Create a public key from raw bytes (33 compressed or 65 uncompressed).
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, KeyError> {
-        let key =
-            secp256k1::PublicKey::from_slice(bytes).map_err(|_| KeyError::InvalidPublicKey)?;
-        let compressed = bytes.len() == 33;
-        Ok(PublicKey { key, compressed })
-    }
-
-    /// Serialize the public key (33 bytes compressed, 65 bytes uncompressed).
-    pub fn serialize(&self) -> Vec<u8> {
-        if self.compressed {
-            self.key.serialize().to_vec()
-        } else {
-            self.key.serialize_uncompressed().to_vec()
-        }
-    }
-
-    /// Compute the Hash160 (RIPEMD160(SHA256)) of the serialized public key.
-    ///
-    /// This is the "public key hash" used in P2PKH and P2WPKH addresses.
-    pub fn pubkey_hash(&self) -> [u8; 20] {
-        hashing::hash160(&self.serialize())
-    }
-
-    /// Get the inner secp256k1 PublicKey.
-    pub fn inner(&self) -> &secp256k1::PublicKey {
-        &self.key
-    }
-
-    /// Whether this is a compressed key.
-    pub fn compressed(&self) -> bool {
-        self.compressed
     }
 }
 

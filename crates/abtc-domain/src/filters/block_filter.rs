@@ -26,7 +26,7 @@
 //! - BIP157: <https://github.com/bitcoin/bips/blob/master/bip-0157.mediawiki>
 
 use super::gcs::{key_from_block_hash, GcsFilter};
-use crate::crypto::hashing::hash256;
+use crate::hashing::hash256;
 use crate::primitives::block::Block;
 use crate::primitives::hash::{BlockHash, Hash256};
 use crate::script::Script;

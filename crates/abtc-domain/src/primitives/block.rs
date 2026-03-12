@@ -2,9 +2,9 @@
 //!
 //! Complete representation of block headers and blocks with merkle root computation.
 
-use crate::crypto::hashing::hash256;
-use crate::primitives::hash::{BlockHash, Hash256};
-use crate::primitives::transaction::Transaction;
+use crate::hashing::hash256;
+use super::hash::{BlockHash, Hash256};
+use super::transaction::Transaction;
 use std::fmt;
 
 /// Bitcoin block header

@@ -20,7 +20,7 @@
 //! PoW is still checked (signet uses low difficulty), but the signet signature
 //! provides the real block authorization.
 
-use crate::crypto::hashing::hash256;
+use crate::hashing::hash256;
 use crate::crypto::signing::TransactionSignatureChecker;
 use crate::primitives::{Amount, Block, Hash256, OutPoint, Transaction, TxIn, TxOut, Txid};
 use crate::script::interpreter::verify_script_with_witness;
@@ -463,7 +463,7 @@ pub fn sign_block_p2wpkh(
     challenge: &Script,
     secret_key_bytes: &[u8; 32],
 ) -> Result<Block, SignetError> {
-    use crate::crypto::hashing::hash160;
+    use crate::hashing::hash160;
     use crate::crypto::signing::{sighash_type, TransactionSignatureChecker};
 
     // Parse the secret key
@@ -632,7 +632,7 @@ mod tests {
 
     /// Compute hash160 of a compressed pubkey for P2WPKH.
     fn pubkey_hash(compressed_pubkey: &[u8]) -> [u8; 20] {
-        crate::crypto::hashing::hash160(compressed_pubkey)
+        crate::hashing::hash160(compressed_pubkey)
     }
 
     // ── Tests: extract_signet_solution ────────────────────────────

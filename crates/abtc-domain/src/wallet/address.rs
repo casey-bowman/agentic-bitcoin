@@ -4,7 +4,7 @@
 //! Includes Base58Check for legacy addresses and Bech32 for native SegWit.
 
 use super::keys::{base58check_decode, base58check_encode, KeyError, PublicKey};
-use crate::crypto::hashing;
+use crate::hashing;
 use crate::script::{Opcodes, Script, ScriptBuilder};
 
 /// Bitcoin address types

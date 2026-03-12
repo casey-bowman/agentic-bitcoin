@@ -33,7 +33,7 @@ use std::fmt;
 
 use super::fragment::Miniscript;
 use super::types::{BaseType, MiniscriptType};
-use crate::wallet::keys::PublicKey;
+use crate::primitives::PublicKey;
 
 // ---------------------------------------------------------------------------
 // Policy AST
@@ -707,7 +707,7 @@ fn hex_decode(hex: &str) -> Result<Vec<u8>, String> {
 mod tests {
     use super::super::types::BaseType;
     use super::*;
-    use crate::crypto::hashing::sha256;
+    use crate::hashing::sha256;
 
     /// Helper: create a dummy compressed public key from a byte seed.
     fn dummy_key(seed: u8) -> PublicKey {

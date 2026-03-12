@@ -15,7 +15,7 @@
 //! - BIP32: <https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki>
 //! - BIP44: <https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki>
 
-use crate::crypto::hashing;
+use crate::hashing;
 use crate::wallet::keys::{
     base58check_decode, base58check_encode, KeyError, PrivateKey, PublicKey,
 };

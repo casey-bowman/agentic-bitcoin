@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="654.9961" height="934.185" viewBox="492.75232 -194.79688 654.9961 934.185">
+  <title>Architecture View</title>
+  <rect x="492.75232" y="-194.79688" width="654.9961" height="934.185" fill="#fafafa"/>
+  <style>
+    text { font-family: monospace; font-size: 16px; }
+  </style>
+  <rect x="542.7523" y="-27.457031" width="159.7" height="70" fill="#e1e9f2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="532.7523" y="-13.457031" width="10" height="14" fill="#e1e9f2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="532.7523" y="14.542969" width="10" height="14" fill="#e1e9f2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="948.0484" y="-31.125" width="159.7" height="70" fill="#e1e9f2" stroke="#000000" stroke-width="3"/>
+  <rect x="734.57495" y="-154.79688" width="159.7" height="70" fill="#e1e9f2" stroke="#000000" stroke-width="3"/>
+  <rect x="867.04297" y="119.62891" width="159.7" height="70" fill="#e1e9f2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="857.04297" y="133.6289" width="10" height="14" fill="#e1e9f2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="857.04297" y="161.6289" width="10" height="14" fill="#e1e9f2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="651.27655" y="118.50391" width="159.7" height="70" fill="#e2f2e2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="641.27655" y="132.5039" width="10" height="14" fill="#e2f2e2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="641.27655" y="160.5039" width="10" height="14" fill="#e2f2e2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="771.29846" y="618.9961" width="159.7" height="70" fill="#e2f2e2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="761.29846" y="632.9961" width="10" height="14" fill="#e2f2e2" stroke="#788ca0" stroke-width="1"/>
+  <rect x="761.29846" y="660.9961" width="10" height="14" fill="#e2f2e2" stroke="#788ca0" stroke-width="1"/>
+  <path d="M 582.6773 42.54297 C 582.6773 330.76953, 811.22345 330.76953, 811.22345 618.9961" fill="none" stroke="rgba(0,128,0,0.63)" stroke-width="1.2"/>
+  <polygon points="811.22345,618.9961 804.13184,615.6858 809.6167,611.33655" fill="rgba(0,128,0,0.63)"/>
+  <path d="M 662.5273 42.54297 C 662.5273 80.52344, 731.1265 80.52344, 731.1265 118.50391" fill="none" stroke="rgba(0,128,0,0.63)" stroke-width="1.2"/>
+  <polygon points="731.1265,118.50391 723.3072,118.1753 726.6978,112.05128" fill="rgba(0,128,0,0.63)"/>
+  <path d="M 946.89294 189.6289 C 946.89294 404.3125, 837.8401 404.3125, 837.8401 618.9961" fill="none" stroke="rgba(0,128,0,0.63)" stroke-width="1.2"/>
+  <polygon points="837.8401,618.9961 837.88983,611.17004 844.1308,614.3402" fill="rgba(0,128,0,0.63)"/>
+  <path d="M 987.9734 38.875 C 987.9734 79.25195, 946.89294 79.25195, 946.89294 119.62891" fill="none" stroke="rgba(80,80,80,0.55)" stroke-width="1.2"/>
+  <line x1="946.89294" y1="119.62891" x2="949.4318" y2="112.22594" stroke="rgba(80,80,80,0.55)" stroke-width="1.5"/>
+  <line x1="946.89294" y1="119.62891" x2="954.3387" y2="117.21825" stroke="rgba(80,80,80,0.55)" stroke-width="1.5"/>
+  <path d="M 1067.8234 38.875 C 1067.8234 328.93555, 864.4568 328.93555, 864.4568 618.9961" fill="none" stroke="rgba(80,80,80,0.55)" stroke-width="1.2"/>
+  <line x1="864.4568" y1="618.9961" x2="865.60956" y2="611.2552" stroke="rgba(80,80,80,0.55)" stroke-width="1.5"/>
+  <line x1="864.4568" y1="618.9961" x2="871.3411" y2="615.27374" stroke="rgba(80,80,80,0.55)" stroke-width="1.5"/>
+  <path d="M 731.1265 188.5039 C 731.1265 403.75, 891.0734 403.75, 891.0734 618.9961" fill="none" stroke="rgba(80,80,80,0.55)" stroke-width="1.2"/>
+  <line x1="891.0734" y1="618.9961" x2="884.08905" y2="615.465" stroke="rgba(80,80,80,0.55)" stroke-width="1.5"/>
+  <line x1="891.0734" y1="618.9961" x2="889.7076" y2="611.29" stroke="rgba(80,80,80,0.55)" stroke-width="1.5"/>
+  <text x="622.6023" y="7.5429688" text-anchor="middle" dominant-baseline="central" fill="#0f141e">abtc_adapters</text>
+  <text x="1027.8984" y="3.875" text-anchor="middle" dominant-baseline="central" fill="#0f141e">abtc_infrastructure</text>
+  <text x="814.4249" y="-119.796875" text-anchor="middle" dominant-baseline="central" fill="#0f141e">agentic_bitcoin</text>
+  <text x="946.89294" y="154.6289" text-anchor="middle" dominant-baseline="central" fill="#0f141e">abtc_application</text>
+  <text x="731.1265" y="153.5039" text-anchor="middle" dominant-baseline="central" fill="#008000">abtc_ports</text>
+  <text x="851.14844" y="653.9961" text-anchor="middle" dominant-baseline="central" fill="#b40000">abtc_domain</text>
+  <polygon points="616.6023,42.54297 628.6023,42.54297 622.6023,52.934967" fill="#000000"/>
+  <polygon points="1021.89844,38.875 1033.8984,38.875 1027.8984,49.267" fill="#000000"/>
+  <polygon points="940.89294,119.62891 952.89294,119.62891 946.89294,130.0209" fill="#000000"/>
+  <polygon points="940.89294,189.6289 952.89294,189.6289 946.89294,200.0209" fill="#000000"/>
+  <polygon points="725.1265,118.50391 737.1265,118.50391 731.1265,128.8959" fill="#000000"/>
+  <polygon points="725.1265,188.5039 737.1265,188.5039 731.1265,198.8959" fill="#000000"/>
+  <polygon points="845.14844,618.9961 857.14844,618.9961 851.14844,629.3881" fill="#000000"/>
+</svg>

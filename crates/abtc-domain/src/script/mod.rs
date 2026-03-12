@@ -5,6 +5,7 @@
 
 #[allow(clippy::module_inception)]
 pub mod script;
+mod checker_impl;
 pub mod interpreter;
 pub mod miniscript;
 pub mod opcodes;

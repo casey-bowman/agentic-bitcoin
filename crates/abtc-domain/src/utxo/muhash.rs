@@ -28,7 +28,7 @@
 //! order. The prime's special form `2^3072 − c` allows efficient modular
 //! reduction via Barrett-style folding.
 
-use crate::crypto::hashing::sha256;
+use crate::hashing::sha256;
 use crate::primitives::Hash256;
 
 // ---------------------------------------------------------------------------

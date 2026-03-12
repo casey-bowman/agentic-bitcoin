@@ -1,45 +1,14 @@
-//! Bitcoin Script type
+//! Bitcoin Script methods
 //!
-//! Represents a script as a byte vector with pattern matching and builder support.
+//! The `Script` struct is defined in `primitives::script_types`. This module
+//! adds opcode-aware methods (pattern matching, builder, display).
+
+pub use crate::primitives::script_types::Script;
 
 use crate::script::Opcodes;
 use std::fmt;
 
-/// Bitcoin Script - sequence of opcodes and data
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Script(Vec<u8>);
-
 impl Script {
-    /// Create an empty script
-    pub fn new() -> Self {
-        Script(Vec::new())
-    }
-
-    /// Create a script from bytes
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
-        Script(bytes)
-    }
-
-    /// Create a script from a byte slice
-    pub fn from_slice(bytes: &[u8]) -> Self {
-        Script(bytes.to_vec())
-    }
-
-    /// Get the script bytes
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Get the script length
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Check if script is empty
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     /// Check if script is P2PKH (Pay to Public Key Hash)
     /// Pattern: OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG
     pub fn is_p2pkh(&self) -> bool {
@@ -128,12 +97,6 @@ impl Script {
             script: &self.0,
             position: 0,
         }
-    }
-}
-
-impl Default for Script {
-    fn default() -> Self {
-        Script::new()
     }
 }
 

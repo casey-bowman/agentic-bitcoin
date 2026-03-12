@@ -19,7 +19,7 @@
 //! Various flags control which consensus rules are enforced (BIP16, BIP65,
 //! BIP66, BIP112, WITNESS, etc.). These correspond to soft-fork activations.
 
-use crate::crypto::hashing;
+use crate::hashing;
 use crate::script::opcodes::Opcodes;
 use crate::script::script::{Script, ScriptBuilder, ScriptInstruction};
 use crate::script::witness::Witness;

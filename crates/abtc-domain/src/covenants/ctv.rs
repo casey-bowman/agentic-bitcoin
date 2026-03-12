@@ -27,7 +27,7 @@
 //! the outputs (who gets paid), the locktime, the number of inputs
 //! (preventing fee-sniping attacks), and which input is executing.
 
-use crate::crypto::hashing::sha256;
+use crate::hashing::sha256;
 use crate::primitives::{Hash256, Transaction};
 
 /// Compute the BIP119 DefaultCheckTemplateVerifyHash for a transaction.
@@ -134,7 +134,7 @@ fn push_compact_size(buf: &mut Vec<u8>, n: u64) {
 mod tests {
     use super::*;
     use crate::primitives::{Amount, OutPoint, TxIn, TxOut, Txid};
-    use crate::script::Script;
+    use crate::primitives::Script;
 
     fn make_simple_tx(num_inputs: usize, outputs: Vec<TxOut>, lock_time: u32) -> Transaction {
         let inputs: Vec<TxIn> = (0..num_inputs)

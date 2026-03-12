@@ -3,13 +3,13 @@
 //! Complete representation of Bitcoin transactions including inputs, outputs,
 //! sequence numbers, and witness data.
 
-use crate::crypto::hashing::hash256;
-use crate::script::witness::Witness;
-use crate::script::Script;
+use crate::hashing::hash256;
+use super::script_types::Script;
+use super::witness::Witness;
 use std::fmt;
 
-pub use crate::primitives::amount::Amount;
-pub use crate::primitives::hash::{Hash256, Txid, Wtxid};
+pub use super::amount::Amount;
+pub use super::hash::{Hash256, Txid, Wtxid};
 
 /// Sequence number constants
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

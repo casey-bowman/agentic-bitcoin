@@ -41,9 +41,9 @@
 //!   scriptPubKey
 //! - `target-output-index`: which output receives the recovered funds
 
-use crate::crypto::hashing::sha256;
+use crate::hashing::sha256;
 use crate::primitives::{Amount, Hash256, Transaction};
-use crate::script::Script;
+use crate::primitives::Script;
 
 // ---------------------------------------------------------------------------
 // Vault parameters
